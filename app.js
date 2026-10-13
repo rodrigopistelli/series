@@ -852,7 +852,11 @@ async function loadAssistant() {
       tvmazeBaseShows().catch(() => []),
       tvmazeRecentShows().catch(() => []),
       (async () => {
-        const b = await Promise.all([1, 2].map(pg => ytsFetch({ limit: 50, page: pg, sort_by: 'like_count', order_by: 'desc', with_rt_ratings: false, minimum_rating: 6 }).catch(() => [])));
+        // Pool amplo p/ cobrir gêneros: curtidos + bem avaliados (só top curtidos não tem comédia, ex.)
+        const b = await Promise.all([
+          ...[1, 2].map(pg => ytsFetch({ limit: 50, page: pg, sort_by: 'like_count', order_by: 'desc', with_rt_ratings: false, minimum_rating: 5 }).catch(() => [])),
+          ...[1, 2].map(pg => ytsFetch({ limit: 50, page: pg, sort_by: 'rating', order_by: 'desc', with_rt_ratings: false, minimum_rating: 5 }).catch(() => [])),
+        ]);
         const m = new Map();
         for (const x of b.flat()) if (x && !m.has(x.id)) m.set(x.id, x);
         return [...m.values()];
@@ -867,9 +871,13 @@ async function loadAssistant() {
   const effType = p.media && p.media !== 'all' ? p.media : state.type;
   pool = pool.filter(it => effType === 'all' || it.type === effType);
   if (p.explicit.size) {
-    // Gênero pedido explicitamente vira filtro rígido: sem ele, nota alta não salva.
-    pool = pool.filter(it => (it.genres || []).some(g => p.explicit.has(g)));
-    if (!pool.length) {
+    // Gênero pedido vira filtro rígido; se zerar mas houver pool, aproxima avisando no resumo.
+    const strict = pool.filter(it => (it.genres || []).some(g => p.explicit.has(g)));
+    if (strict.length) pool = strict;
+    else if (pool.length) {
+      const box2 = $('#moodSummary');
+      if (box2) box2.innerHTML += `<br><small>Sem ${[...p.explicit].join('/')} exato por aqui — aproximei pelo resto dos seus sinais.</small>`;
+    } else {
       const tipo = effType === 'movie' ? 'filmes' : effType === 'series' ? 'séries' : 'títulos';
       state.assistantEmpty = `Nada de ${[...p.explicit].join('/')} entre ${tipo} por aqui — tente outro gênero ou abra a aba Todos.`;
     }
