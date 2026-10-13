@@ -20,7 +20,6 @@ const state = {
   yearMin: '',
   yearMax: '',
   minRating: 0,
-  genre: '',
   sort: 'rating_desc',
   page: 1,
   items: [],       // itens brutos da fonte atual
@@ -121,8 +120,6 @@ function setupFilters() {
   yMin.innerHTML = '<option value="">—</option>' + Array.from({length: now - 1950 + 1}, (_, i) => now - i).map(y => `<option>${y}</option>`).join('');
   yMax.innerHTML = '<option value="">—</option>' + Array.from({length: now - 1950 + 1}, (_, i) => now - i).map(y => `<option>${y}</option>`).join('');
   yMax.value = '';
-  const genres = ['Action','Adventure','Animation','Comedy','Crime','Documentary','Drama','Family','Fantasy','History','Horror','Music','Mystery','Romance','Sci-Fi','Science-Fiction','Thriller','War','Western'];
-  $('#genreFilter').innerHTML = '<option value="">Todos</option>' + genres.map(g => `<option>${g}</option>`).join('');
 }
 
 // ---------- helpers ----------
@@ -138,7 +135,6 @@ function applyClientFilters(items) {
     if (state.minRating && (it.rating ?? 0) < state.minRating) return false;
     if (lo && (it.year || 0) < lo) return false;
     if (hi && (it.year || 0) > hi) return false;
-    if (state.genre && !(it.genres || []).some(g => g.toLowerCase() === state.genre.toLowerCase())) return false;
     return true;
   });
   const sorters = {
@@ -210,7 +206,6 @@ function render() {
   if (!slice.length) {
     const active = [];
     if (state.yearMin || state.yearMax) active.push(`ano ${state.yearMin || '…'}–${state.yearMax || '…'}`);
-    if (state.genre) active.push(`gênero ${state.genre}`);
     if (state.query && state.tab === 'search') active.push(`busca "${state.query}"`);
     const hints = {
       favs: 'Você ainda não favoritou nada. Toque na ★ de um título para salvar.',
@@ -222,10 +217,7 @@ function render() {
       : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
         'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
   } else {
-    const sample = (state.yearMin || state.yearMax) && !state.tmdbKey
-      ? ' • amostra do ano no modo grátis (título exato? use a Busca; ano completo? chave TMDB)'
-      : '';
-    statusEl.textContent = `${list.length} título(s) • fonte: ${state.tmdbKey ? 'TMDB' : 'TVMaze + YTS'} • notas em escala 0–10${sample}`;
+    statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
   }
   for (const it of slice) {
     const card = document.createElement('article');
@@ -478,7 +470,6 @@ async function enrichYearWeeklies(year, token) {
     merge(raws);
     state.filtered = state.items;
     render();
-    statusEl.textContent += ` • ampliando ${year} em 2º plano…`;
     if (i + 12 < dates.length) await new Promise(res => setTimeout(res, 2500));
   }
   weeklyCache[year] = collected;
@@ -646,7 +637,6 @@ async function loadMoviesFree() {
       minimum_rating: state.minRating || 0,
     };
     if (isSearch) params.query_term = state.query;
-    if (state.genre) params.genre = state.genre;
     return ytsFetch(params).catch(() => []);
   }));
   const seen = new Map();
@@ -720,7 +710,7 @@ function bind() {
     state.tab = 'search';
     load(true);
   });
-  for (const [id, key] of [['yearMin','yearMin'],['yearMax','yearMax'],['genreFilter','genre'],['sortFilter','sort']]) {
+  for (const [id, key] of [['yearMin','yearMin'],['yearMax','yearMax'],['sortFilter','sort']]) {
     $('#' + id).addEventListener('change', (e) => {
       state[key] = e.target.value;
       // Ano/gênero mudam o lote da API no modo sem chave (YTS multi-página,
@@ -730,8 +720,8 @@ function bind() {
     });
   }
   $('#clearFilters').addEventListener('click', () => {
-    state.yearMin = state.yearMax = state.genre = ''; state.sort = 'rating_desc';
-    $('#yearMin').value = ''; $('#yearMax').value = ''; $('#genreFilter').value = ''; $('#sortFilter').value = 'rating_desc';
+    state.yearMin = state.yearMax = ''; state.sort = 'rating_desc';
+    $('#yearMin').value = ''; $('#yearMax').value = ''; $('#sortFilter').value = 'rating_desc';
     load(true);
   });
   loadMoreBtn.addEventListener('click', async () => {
