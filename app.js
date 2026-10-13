@@ -289,7 +289,7 @@ function buildCard(it) {
         <button class="fav ${isFav(it) ? 'on' : ''}" title="Favoritar">★</button>
       </div>
       <div class="info">
-        <h3>${it.title}</h3>
+        <h3>${it.ptTitle ? `${it.ptTitle} <small>(${it.title})</small>` : it.title}</h3>
         <div class="meta"><span>${it.year || '—'}</span>${it.genres?.length ? `<span>• ${it.genres.slice(0, 2).map(genrePt).join(', ')}</span>` : ''}</div>
         <p class="overview">${((it._pt || it.overview) || 'Sem sinopse.').slice(0, 160)}</p>
         <div class="card-flags">
@@ -371,7 +371,7 @@ function openModal(it) {
     <div class="modal-hero">
       <img src="${it.cover}" onerror="this.src='${PLACEHOLDER}'" alt="Capa original de ${it.title}" />
       <div>
-        <h2>${it.title}</h2>
+        <h2>${it.ptTitle ? `${it.ptTitle} (${it.title})` : it.title}</h2>
         <div class="sub">${ratingLabel(it)} • ${it.year || '—'} • ${it.type === 'movie' ? 'Filme' : 'Série'}${it.imdb ? ` • <a href="https://www.imdb.com/title/${it.imdb}/" target="_blank" rel="noopener">ver no IMDb</a>` : ''}</div>
         <div class="chips">${(it.genres || []).map(g => `<span>${genrePt(g)}</span>`).join('')}</div>
         <p class="synopsis">${(it._pt || it.overview) || 'Sinopse não disponível.'}</p>
@@ -933,6 +933,39 @@ async function cinemetaCatalog(type, genre, skip = 0) {
   if (!r.ok) throw new Error('Cinemeta ' + r.status);
   return ((await r.json()).metas || []).map(m => cinemetaToItem(m, type));
 }
+// Wikidata PT → IMDb: busca pelo título em português ("Vingadores" → tt4154796)
+function normStr(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+async function searchPTitles(q, type) {
+  const s = await (await fetch(`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(q)}&language=pt&format=json&limit=15&origin=*`)).json();
+  const found = (s.search || []).slice(0, 12);
+  if (!found.length) return [];
+  const ids = found.map(x => x.id);
+  const labels = {};
+  found.forEach(x => { labels[x.id] = x.label; });
+  const ents = ((await (await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.join('|')}&props=claims&format=json&origin=*`)).json()).entities) || {};
+  const out = [];
+  for (const id of ids) {
+    const e = ents[id];
+    if (!e?.claims) continue;
+    const p31 = (e.claims.P31 || []).map(c => c.mainsnak?.datavalue?.value?.id);
+    const tt = e.claims.P345?.[0]?.mainsnak?.datavalue?.value;
+    if (!tt || !String(tt).startsWith('tt')) continue;
+    let t = null;
+    if (p31.includes('Q11424')) t = 'movie';
+    else if (p31.includes('Q5398426') || p31.includes('Q15416')) t = 'series';
+    if (!t || (type !== 'all' && type !== t)) continue;
+    out.push({ tt, t, pt: labels[id] });
+    if (out.length >= 6) break;
+  }
+  const settled = await Promise.allSettled(out.map(async ({ tt, t, pt }) => {
+    const m = (await (await fetch(`https://v3-cinemeta.strem.io/meta/${t}/${tt}.json`)).json()).meta;
+    if (!m) return null;
+    const it = cinemetaToItem(m, t);
+    if (pt && normStr(pt) !== normStr(it.title)) it.ptTitle = pt;
+    return it;
+  }));
+  return settled.filter(r => r.status === 'fulfilled' && r.value).map(r => r.value);
+}
 async function loadAssistant() {
   const text = (state.moodText || '').trim();
   const p = analyzeMood(text);
@@ -1183,6 +1216,16 @@ async function load(reset = true) {
         wantSeries ? loadSeriesFree().catch(() => []) : Promise.resolve([]),
       ]);
       items = [...movies, ...series];
+      if (state.tab === 'search' && state.query) {
+        // Títulos em PT via Wikidata + quem contém a palavra primeiro (sem acento)
+        const pt = await searchPTitles(state.query, state.type).catch(() => []);
+        const seen = new Map();
+        for (const it of [...items, ...pt]) { const k = it.imdb ? 'tt-' + it.imdb : it.key; if (!seen.has(k)) seen.set(k, it); }
+        items = [...seen.values()];
+        const nq = normStr(state.query);
+        const has = (it) => (normStr(it.title).includes(nq) || (it.ptTitle && normStr(it.ptTitle).includes(nq))) ? 1 : 0;
+        items.sort((a, b) => has(b) - has(a) || ((b.imdbRating || b.rating || 0) - (a.imdbRating || a.rating || 0)));
+      }
       if (!items.length) throw new Error('empty');
     }
     state.items = state.page === 1 ? items : [...state.items, ...items];
