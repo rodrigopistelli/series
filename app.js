@@ -201,30 +201,7 @@ function setView(v) {
 }
 
 // ---------- render ----------
-function render() {
-  grid.innerHTML = '';
-  let list = applyClientFilters(currentBase());
-  const slice = list.slice(0, state.shown);
-  for (const it of slice) if (it.imdb && !it.imdbRating && imdbCache[it.imdb]?.r) it.imdbRating = imdbCache[it.imdb].r;
-  if (!slice.length) {
-    const active = [];
-    if (state.yearMin || state.yearMax) active.push(`ano ${state.yearMin || '…'}–${state.yearMax || '…'}`);
-    if (state.query && state.tab === 'search') active.push(`busca "${state.query}"`);
-    const hints = {
-      favs: 'Você ainda não favoritou nada. Toque na ★ de um título para salvar.',
-      watched: 'Nenhum título marcado como assistido. Toque em "✓ Já vi" para marcar.',
-      watching: 'Nenhum título em acompanhamento. Toque em "▶ Vendo" para marcar.',
-    };
-    statusEl.textContent = (state.view !== 'all' && hints[state.view])
-      ? hints[state.view]
-      : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
-        'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
-  } else {
-    statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
-    if (state.ytsDown && state.type !== 'series') statusEl.textContent += ' • filmes indisponíveis: sua rede/AdBlock pode estar bloqueando o provedor';
-  }
-  for (const it of slice) {
-    try {
+function buildCard(it) {
     const card = document.createElement('article');
     card.className = 'card';
     card.dataset.card = it.key;
@@ -251,8 +228,46 @@ function render() {
     card.querySelector('.fav').addEventListener('click', (e) => { e.stopPropagation(); toggleFav(it); });
     card.querySelector('[data-act="watched"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatched(it); });
     card.querySelector('[data-act="watching"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatching(it); });
-    grid.appendChild(card);
-    } catch (e) { console.error('card', it && it.key, e); }
+    return card;
+}
+function render() {
+  grid.innerHTML = '';
+  let list = applyClientFilters(currentBase());
+  const slice = list.slice(0, state.shown);
+  for (const it of slice) if (it.imdb && !it.imdbRating && imdbCache[it.imdb]?.r) it.imdbRating = imdbCache[it.imdb].r;
+  if (!slice.length) {
+    const active = [];
+    if (state.yearMin || state.yearMax) active.push(`ano ${state.yearMin || '…'}–${state.yearMax || '…'}`);
+    if (state.query && state.tab === 'search') active.push(`busca "${state.query}"`);
+    const hints = {
+      favs: 'Você ainda não favoritou nada. Toque na ★ de um título para salvar.',
+      watched: 'Nenhum título marcado como assistido. Toque em "✓ Já vi" para marcar.',
+      watching: 'Nenhum título em acompanhamento. Toque em "▶ Vendo" para marcar.',
+    };
+    statusEl.textContent = (state.view !== 'all' && hints[state.view])
+      ? hints[state.view]
+      : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
+        'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
+  } else {
+    statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
+    if (state.ytsDown && state.type !== 'series') statusEl.textContent += ' • filmes indisponíveis: sua rede/AdBlock pode estar bloqueando o provedor';
+  }
+  // Na aba Em cartaz, separa filmes e séries com títulos de seção.
+  const grouped = state.tab === 'nowplaying' && state.view === 'all' && state.type === 'all';
+  const groups = grouped
+    ? [['🎬 Filmes em cartaz', slice.filter(i => i.type === 'movie')], ['📺 Séries no ar', slice.filter(i => i.type === 'series')]]
+    : [[null, slice]];
+  for (const [gtitle, gitems] of groups) {
+    if (gtitle && gitems.length) {
+      const h = document.createElement('h2');
+      h.className = 'grid-title';
+      h.textContent = gtitle;
+      grid.appendChild(h);
+    }
+    for (const it of gitems) {
+      try { grid.appendChild(buildCard(it)); }
+      catch (e) { console.error('card', it && it.key, e); }
+    }
   }
   loadMoreBtn.classList.toggle('hidden', state.shown >= list.length);
   enrichIMDb(slice); // busca a nota real IMDb da leva visível, sem travar a tela
