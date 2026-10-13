@@ -1232,6 +1232,9 @@ function bind() {
     load(true);
   }
   $('#suggestBtn').addEventListener('click', runAssistant);
+  $('#moodInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAssistant(); }
+  });
   $('#clearMoodBtn').addEventListener('click', () => {
     $('#moodInput').value = '';
     state.moodText = '';
