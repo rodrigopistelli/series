@@ -216,6 +216,27 @@ code { background: #000; padding: 2px 6px; border-radius: 6px; }
   .review-card { grid-template-columns: 1fr; }
   .review-card img { max-width: 180px; }
 }
+/* ---------- Página inicial ---------- */
+.home-panel { margin: 0 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+.hero { background: linear-gradient(135deg, #1c2450, #3a1c4f); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.hero h1 { margin: 0 0 4px; font-size: 24px; }
+.hero p { margin: 0 0 12px; color: var(--muted); text-transform: capitalize; }
+.stat-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.stat-row button, .stat-row .stat { background: rgba(0,0,0,.35); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 10px 14px; font-size: 16px; font-weight: 800; display: flex; flex-direction: column; align-items: center; min-width: 86px; font-family: inherit; }
+.stat-row small { font-weight: 400; color: var(--muted); font-size: 11px; }
+.stat-row button { cursor: pointer; }
+.stat-row button:hover { border-color: var(--accent2); }
+.home-panel h2 { margin: 6px 0 0; font-size: 18px; }
+.news-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.news-grid a { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; text-decoration: none; display: flex; flex-direction: column; gap: 2px; }
+.news-grid a:hover { border-color: var(--accent2); }
+.news-grid strong { color: var(--text); }
+.news-grid small { color: var(--muted); }
+.brand { cursor: pointer; }
+@media (max-width: 640px) {
+  .home-panel { margin: 0 12px 16px; }
+  .hero h1 { font-size: 20px; }
+}
 /* ---------- Em cartaz / cinemas ---------- */
 .cinema-panel { margin: 0 20px 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
 .cinema-head { display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }

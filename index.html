@@ -32,7 +32,8 @@
 </header>
 
 <nav class="tabs" role="tablist">
-  <button data-tab="all" class="active">📚 Todos</button>
+  <button data-tab="home" class="active">🏠 Início</button>
+  <button data-tab="all">📚 Todos</button>
   <button data-tab="trending">🔥 Em alta</button>
   <button data-tab="top">🏆 Maiores notas</button>
   <button data-tab="releases">🆕 Lançamentos</button>
@@ -108,6 +109,27 @@
       <button id="clearMoodBtn" class="ghost" title="Limpar texto">Limpar</button>
     </div>
     <div id="moodSummary" class="mood-summary hidden"></div>
+  </div>
+</section>
+
+<section id="homePanel" class="home-panel hidden">
+  <div class="hero">
+    <div>
+      <h1>🎬 O que vamos ver hoje?</h1>
+      <p id="homeDate"></p>
+    </div>
+    <div class="stat-row" id="homeStats"></div>
+  </div>
+  <h2>🎬 Filmes do mês</h2>
+  <div id="homeMovies" class="grid"></div>
+  <h2>▶ Continue assistindo</h2>
+  <div id="homeWatching" class="grid"></div>
+  <h2>📰 Notícias do cinema</h2>
+  <div class="news-grid">
+    <a href="https://www.omelete.com.br/" target="_blank" rel="noopener"><strong>Omelete</strong><small>Notícias, críticas e bastidores</small></a>
+    <a href="https://www.adorocinema.com/" target="_blank" rel="noopener"><strong>AdoroCinema</strong><small>Estreias, trailers e bilheteria</small></a>
+    <a href="https://www.imdb.com/news/movie/" target="_blank" rel="noopener"><strong>IMDb News</strong><small>O mundo do cinema em inglês</small></a>
+    <a href="https://www.rottentomatoes.com/" target="_blank" rel="noopener"><strong>Rotten Tomatoes</strong><small>Críticas e Tomatometer</small></a>
   </div>
 </section>
 

@@ -16,7 +16,7 @@ const YTS_MIRRORS = ['https://movies-api.accel.li/api', 'https://yts.am/api', 'h
 function storeGet(k) { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } }
 function storeGetObj(k) { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } }
 const state = {
-  tab: 'all',
+  tab: 'home',
   type: 'all',
   query: '',
   yearMin: '',
@@ -1083,12 +1083,83 @@ function paintReview(i) {
   }
 }
 
+// ---------- Página inicial ----------
+function goHome() {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+  document.querySelector('[data-tab="home"]').classList.add('active');
+  state.tab = 'home';
+  load(true);
+}
+function renderMyStats() {
+  const el = $('#homeStats');
+  if (!el) return;
+  const w = state.watched;
+  const rated = w.map(x => x.imdbRating || x.rating || 0).filter(v => v > 0);
+  const avg = rated.length ? (rated.reduce((a, b) => a + b, 0) / rated.length).toFixed(1) : '—';
+  const gc = {};
+  for (const x of w) for (const g of x.genres || []) gc[g] = (gc[g] || 0) + 1;
+  const topG = Object.entries(gc).sort((a, b) => b[1] - a[1])[0];
+  const mins = w.map(x => x.runtime || 0).filter(Boolean).reduce((a, b) => a + b, 0);
+  el.innerHTML = `
+    <button data-v="watched">✓ ${w.length}<small>assistidos</small></button>
+    <button data-v="watching">▶ ${state.watching.length}<small>assistindo</small></button>
+    <button data-v="watchlist">🔖 ${state.watchlist.length}<small>ver depois</small></button>
+    <button data-v="favs">★ ${state.favorites.length}<small>favoritos</small></button>
+    <span class="stat">★ ${avg}<small>nota média</small></span>
+    <span class="stat">${topG ? genrePt(topG[0]) : '—'}<small>seu gênero</small></span>
+    ${mins ? `<span class="stat">≈${Math.round(mins / 60)}h<small>assistidas</small></span>` : ''}`;
+  el.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => setView(b.dataset.v)));
+}
+async function loadHome() {
+  const now = new Date(), nowY = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dt = $('#homeDate');
+  if (dt) dt.textContent = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  renderMyStats();
+  const box = $('#homeMovies');
+  if (box) box.innerHTML = '<p class="hint">Buscando estreias do mês…</p>';
+  try {
+    let movies = [];
+    if (state.tmdbKey) {
+      const d = await tmdb('/discover/movie', { sort_by: 'popularity.desc', 'primary_release_date.gte': `${nowY}-${mm}-01`, 'vote_count.gte': 20, page: 1 });
+      movies = d.results.map(x => ({ ...x, media_type: 'movie' })).map(tmdbToItem).slice(0, 8);
+    } else {
+      const b = await Promise.all([1, 2].map(pg => ytsFetch({ limit: 50, page: pg, sort_by: 'date_added', order_by: 'desc', with_rt_ratings: false, minimum_rating: 6 }).catch(() => [])));
+      const m = new Map();
+      for (const x of b.flat()) if (x && !m.has(x.id)) m.set(x.id, x);
+      movies = [...m.values()].map(ytsToItem).filter(it => it.year === nowY).sort((a, b2) => (b2.rating || 0) - (a.rating || 0)).slice(0, 8);
+    }
+    if (box) {
+      box.innerHTML = '';
+      if (!movies.length) box.innerHTML = '<p class="hint">Sem estreias localizadas agora.</p>';
+      for (const it of movies) { try { box.appendChild(buildCard(it)); } catch (e) { console.error(e); } }
+      enrichIMDb(movies); enrichPT(movies);
+    }
+  } catch { if (box) box.innerHTML = '<p class="hint">Não foi possível carregar agora.</p>'; }
+  const w = $('#homeWatching');
+  if (w) {
+    w.innerHTML = '';
+    const list = state.watching.slice(0, 4);
+    if (!list.length) w.innerHTML = '<p class="hint">Nada em acompanhamento — marque ▶ Vendo em qualquer título.</p>';
+    else {
+      for (const it of list) { try { w.appendChild(buildCard(it)); } catch (e) { console.error(e); } }
+      enrichIMDb(list); enrichPT(list);
+    }
+  }
+}
+
 // ---------- orquestração ----------
 async function load(reset = true) {
   if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = 'all'; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
   state.shown = state.perPage; // primeira leva; "carregar mais" aumenta
   $('#cinemaPanel').classList.toggle('hidden', state.tab !== 'nowplaying');
   $('#assistantPanel').classList.toggle('hidden', state.tab !== 'assistant');
+  $('#homePanel').classList.toggle('hidden', state.tab !== 'home');
+  const onHome = state.tab === 'home';
+  $('#grid').classList.toggle('hidden', onHome);
+  document.querySelector('.pager').classList.toggle('hidden', onHome);
+  $('#status').classList.toggle('hidden', onHome);
+  if (!onHome) { $('#reviewBox').classList.add('hidden'); $('#reviewBox').innerHTML = ''; }
   document.querySelector('.filters').classList.toggle('filters-off', state.tab === 'assistant');
   if (state.tab === 'nowplaying') {
     if (state.userLoc && !state.cinemas.length) loadCinemas();
@@ -1097,7 +1168,10 @@ async function load(reset = true) {
   statusEl.textContent = 'Carregando…';
   try {
     let items = [];
-    if (state.tab === 'assistant') {
+    if (state.tab === 'home') {
+      await loadHome();
+      return;
+    } else if (state.tab === 'assistant') {
       items = await loadAssistant();
     } else if (state.tmdbKey) {
       items = await loadTMDB();
@@ -1200,6 +1274,7 @@ function bind() {
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') $('#modal').classList.add('hidden'); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#modal').classList.add('hidden'); });
 
+  document.querySelector('.brand').addEventListener('click', goHome);
   $('#favBtn').addEventListener('click', () => setView('favs'));
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
