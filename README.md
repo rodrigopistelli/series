@@ -56,6 +56,7 @@ python -m http.server 8000
 - 🔥 Em alta • 📚 Todos • 🏆 Maiores notas • 🆕 Lançamentos • 🎟 Em cartaz • 🔎 Busca • ✨ Assistente de momento
 - Filtros: tipo (filme/série), ano (de–até), nota mínima (slider), gênero, ordenação
 - ★ Dourado = nota real do IMDb (buscada sob demanda, sem chave); sem selo = nota da fonte. Ordenação e filtro de nota usam a nota da fonte.
+- Sinopses e gêneros em português (tradução automática com cache no navegador).
 - Cards com capa original, nota ★, ano, sinopse
 - Modal de detalhes com link IMDb / trailer
 - ★ Favoritos (localStorage) • Paginação "Carregar mais" • Layout responsivo dark

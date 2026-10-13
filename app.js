@@ -206,6 +206,61 @@ function setView(v) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// ---------- Português: gêneros traduzidos + sinopses via MyMemory (grátis, sem chave) ----------
+const GENRE_PT = { Action: 'Ação', Adventure: 'Aventura', Animation: 'Animação', Biography: 'Biografia', Comedy: 'Comédia', Crime: 'Crime', Documentary: 'Documentário', Drama: 'Drama', Family: 'Família', Fantasy: 'Fantasia', History: 'História', Horror: 'Terror', Music: 'Música', Musical: 'Musical', Mystery: 'Mistério', News: 'Notícias', Reality: 'Reality show', 'Reality-TV': 'Reality show', Romance: 'Romance', 'Sci-Fi': 'Ficção científica', 'Science-Fiction': 'Ficção científica', Soap: 'Novela', Sport: 'Esporte', Talk: 'Talk show', 'Talk-Show': 'Talk show', Thriller: 'Suspense', 'TV Movie': 'Filme para TV', War: 'Guerra', Western: 'Faroeste', Kids: 'Infantil' };
+function genrePt(g) { return GENRE_PT[g] || g; }
+function hashStr(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s[i].charCodeAt(0)) | 0; return (h >>> 0).toString(36); }
+let ptCache = {};
+try { ptCache = JSON.parse(localStorage.getItem('cineseries_pt') || '{}'); } catch { ptCache = {}; }
+function savePtCache() { try { const k = Object.keys(ptCache); if (k.length > 1500) { const t = {}; k.slice(-1500).forEach(x => t[x] = ptCache[x]); ptCache = t; } localStorage.setItem('cineseries_pt', JSON.stringify(ptCache)); } catch {} }
+async function translateEN(text) {
+  if (!text || state.tmdbKey) return text; // TMDB já vem em pt-BR
+  const t = text.slice(0, 450);
+  const key = 'pt_' + hashStr(t);
+  if (ptCache[key]) return ptCache[key];
+  try {
+    const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(t) + '&langpair=en|pt-BR');
+    const out = (await r.json())?.responseData?.translatedText;
+    if (out && !/MYMEMORY WARNING/i.test(out)) { ptCache[key] = out; savePtCache(); return out; }
+  } catch {}
+  return text;
+}
+let ptRunning = 0;
+const ptQueue = [];
+function enrichPT(list) {
+  if (state.tmdbKey) return;
+  for (const it of list) {
+    if (!it.overview || it._pt || it._ptPending) continue;
+    const key = 'pt_' + hashStr(it.overview.slice(0, 450));
+    if (ptCache[key]) { it._pt = ptCache[key]; paintPT(it); continue; }
+    if (!ptQueue.includes(it)) ptQueue.push(it);
+  }
+  pumpPT();
+}
+async function pumpPT() {
+  while (ptRunning < 3 && ptQueue.length) {
+    const it = ptQueue.shift();
+    it._ptPending = true; ptRunning++;
+    translateEN(it.overview).then(v => {
+      ptRunning--; it._ptPending = false;
+      if (v && v !== it.overview) {
+        it._pt = v;
+        for (const arr of [state.items, state.favorites, state.watched, state.watching]) for (const x of arr) if (x.key === it.key) x._pt = v;
+        paintPT(it);
+      }
+      pumpPT();
+    });
+  }
+}
+function paintPT(it) {
+  if (!it._pt) return;
+  document.querySelectorAll(`[data-card="${CSS.escape(it.key)}"] .overview`).forEach(p => { p.textContent = it._pt.slice(0, 160); });
+  const ms = document.querySelector('#modalBody .synopsis');
+  if (ms && state.modalKey === it.key) ms.textContent = it._pt;
+  const rs = document.querySelector('#reviewBox .synopsis');
+  if (rs) rs.textContent = it._pt;
+}
+
 // ---------- render ----------
 function buildCard(it) {
     const card = document.createElement('article');
@@ -221,8 +276,8 @@ function buildCard(it) {
       </div>
       <div class="info">
         <h3>${it.title}</h3>
-        <div class="meta"><span>${it.year || '—'}</span>${it.genres?.length ? `<span>• ${it.genres.slice(0, 2).join(', ')}</span>` : ''}</div>
-        <p class="overview">${(it.overview || 'Sem sinopse.').slice(0, 160)}</p>
+        <div class="meta"><span>${it.year || '—'}</span>${it.genres?.length ? `<span>• ${it.genres.slice(0, 2).map(genrePt).join(', ')}</span>` : ''}</div>
+        <p class="overview">${((it._pt || it.overview) || 'Sem sinopse.').slice(0, 160)}</p>
         <div class="card-flags">
           <button class="flag ${isWatched(it) ? 'on' : ''}" data-act="watched" title="Marcar como assistido">✓ Já vi</button>
           <button class="flag ${isWatching(it) ? 'on' : ''}" data-act="watching" title="Marcar como assistindo">▶ Vendo</button>
@@ -281,6 +336,7 @@ function render() {
   }
   loadMoreBtn.classList.toggle('hidden', state.shown >= list.length);
   enrichIMDb(slice); // busca a nota real IMDb da leva visível, sem travar a tela
+  enrichPT(slice); // traduz sinopses da leva visível, com cache
 }
 
 async function resolveTmdbImdb(it) {
@@ -300,8 +356,8 @@ function openModal(it) {
       <div>
         <h2>${it.title}</h2>
         <div class="sub">${ratingLabel(it)} • ${it.year || '—'} • ${it.type === 'movie' ? 'Filme' : 'Série'}${it.imdb ? ` • <a href="https://www.imdb.com/title/${it.imdb}/" target="_blank" rel="noopener">ver no IMDb</a>` : ''}</div>
-        <div class="chips">${(it.genres || []).map(g => `<span>${g}</span>`).join('')}</div>
-        <p>${it.overview || 'Sinopse não disponível.'}</p>
+        <div class="chips">${(it.genres || []).map(g => `<span>${genrePt(g)}</span>`).join('')}</div>
+        <p class="synopsis">${(it._pt || it.overview) || 'Sinopse não disponível.'}</p>
         <div class="row">
           <button class="primary" id="mFav">${isFav(it) ? '★ Remover dos favoritos' : '☆ Favoritar'}</button>
           <button class="ghost ${isWatched(it) ? 'on' : ''}" id="mWatched">${isWatched(it) ? '✓ Assistido' : '✓ Já vi'}</button>
@@ -316,6 +372,14 @@ function openModal(it) {
   $('#mFav').addEventListener('click', () => { toggleFav(it); openModal(it); });
   $('#mWatched').addEventListener('click', () => { toggleWatched(it); openModal(it); });
   $('#mWatching').addEventListener('click', () => { toggleWatching(it); openModal(it); });
+  // Sinopse em PT ao abrir o detalhe
+  if (it.overview && !it._pt && !state.tmdbKey) {
+    translateEN(it.overview).then(v => {
+      if (v && v !== it.overview && state.modalKey === it.key && !$('#modal').classList.contains('hidden')) {
+        it._pt = v; const s = document.querySelector('#modalBody .synopsis'); if (s) s.textContent = v;
+      }
+    });
+  }
   // Nota real IMDb ao abrir o detalhe (usa o id IMDb; no modo TMDB resolve primeiro)
   if (it.imdb && !it.imdbRating) {
     fetchImdbRating(it.imdb, it.type).then(v => {
@@ -960,6 +1024,7 @@ async function reviewTitle() {
 function paintReview(i) {
   const it = state.reviewList[i];
   if (!it) return;
+  state.reviewIndex = i;
   const box = $('#reviewBox');
   const others = state.reviewList.map((x, j) => j === i ? '' : `<button data-ri="${j}" class="ghost">${x.title}${x.year ? ' (' + x.year + ')' : ''}</button>`).join('');
   box.innerHTML = `
@@ -968,8 +1033,8 @@ function paintReview(i) {
       <div>
         <h2>${it.title} ${it.year ? '(' + it.year + ')' : ''}</h2>
         <div class="sub" id="reviewSub">${ratingLabel(it)} • ${it.type === 'movie' ? 'Filme' : 'Série'}</div>
-        <div class="chips">${(it.genres || []).map(g => `<span>${g}</span>`).join('')}</div>
-        <p>${it.overview || 'Sinopse não disponível.'}</p>
+        <div class="chips">${(it.genres || []).map(g => `<span>${genrePt(g)}</span>`).join('')}</div>
+        <p class="synopsis">${(it._pt || it.overview) || 'Sinopse não disponível.'}</p>
         <div class="row">
           ${it.imdb ? `<a href="https://www.imdb.com/title/${it.imdb}/" target="_blank" rel="noopener"><button class="ghost">IMDb</button></a>` : ''}
           ${it.trailer ? `<a href="${it.trailer}" target="_blank" rel="noopener"><button class="ghost">▶ Trailer</button></a>` : ''}
@@ -984,6 +1049,13 @@ function paintReview(i) {
         it.imdbRating = v; paintImdbBadge(it.key, v);
         const s = $('#reviewSub');
         if (s) s.textContent = `${ratingLabel(it)} • ${it.type === 'movie' ? 'Filme' : 'Série'}`;
+      }
+    });
+  }
+  if (it.overview && !it._pt && !state.tmdbKey) {
+    translateEN(it.overview).then(v => {
+      if (v && v !== it.overview && state.reviewList[state.reviewIndex] === it) {
+        it._pt = v; const s = document.querySelector('#reviewBox .synopsis'); if (s) s.textContent = v;
       }
     });
   }
