@@ -1053,11 +1053,14 @@ function paintReview(i) {
         <div class="row">
           ${it.imdb ? `<a href="https://www.imdb.com/title/${it.imdb}/" target="_blank" rel="noopener"><button class="ghost">IMDb</button></a>` : ''}
           ${it.trailer ? `<a href="${it.trailer}" target="_blank" rel="noopener"><button class="ghost">▶ Trailer</button></a>` : ''}
+          <button class="ghost ${isLater(it) ? 'on' : ''}" id="rLater">${isLater(it) ? '🔖 Na lista' : '🔖 Ver depois'}</button>
         </div>
       </div>
     </div>
     ${others ? `<div class="alt-row"><small>Outras opções:</small> ${others}</div>` : ''}`;
   box.querySelectorAll('[data-ri]').forEach(b => b.addEventListener('click', () => paintReview(+b.dataset.ri)));
+  const rl = $('#rLater');
+  if (rl) rl.addEventListener('click', () => { toggleLater(it); paintReview(state.reviewIndex); });
   if (it.imdb && !it.imdbRating) {
     fetchImdbRating(it.imdb, it.type).then(v => {
       if (v) {
