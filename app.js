@@ -816,6 +816,26 @@ function analyzeMood(text) {
   else p.signals.push('período da noite');
   return { ...p, hour: h };
 }
+// Cinemeta: catálogos por gênero com nota IMDb real (torrent bloqueado? este passa).
+// Ex.: /catalog/movie/top/genre=Comedy.json (+ &skip=50 p/ mais). Sem gênero = popular.
+function cinemetaToItem(m, type) {
+  const tt = m.id;
+  const yr = parseInt(String(m.year || m.releaseInfo || '').slice(0, 4)) || null;
+  const r = parseFloat(m.imdbRating) || 0;
+  return {
+    key: 'cin-' + tt, title: m.name, type, year: yr, rating: r,
+    imdbRating: r || null, cover: m.poster || PLACEHOLDER, coverSmall: m.poster || PLACEHOLDER,
+    overview: m.description || '', genres: m.genres || [], source: 'Cinemeta',
+    imdb: tt, runtime: null, trailer: `https://www.imdb.com/title/${tt}/`,
+  };
+}
+async function cinemetaCatalog(type, genre, skip = 0) {
+  const kind = type === 'movie' ? 'movie' : 'series';
+  const url = `https://v3-cinemeta.strem.io/catalog/${kind}/top${genre ? '/genre=' + encodeURIComponent(genre) : ''}${skip ? '&skip=' + skip : ''}.json`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Cinemeta ' + r.status);
+  return ((await r.json()).metas || []).map(m => cinemetaToItem(m, type));
+}
 async function loadAssistant() {
   const text = (state.moodText || '').trim();
   const p = analyzeMood(text);
@@ -835,7 +855,10 @@ async function loadAssistant() {
     const d = await tmdb('/trending/all/week', { page: 1 });
     pool = d.results.filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(tmdbToItem);
   } else {
-    const [base, recent, ytsRaw] = await Promise.all([
+    const effTypeEarly = p.media && p.media !== 'all' ? p.media : state.type;
+    const cinGenres = p.explicit.size ? [...p.explicit].slice(0, 2) : [null];
+    const cinTypes = effTypeEarly === 'all' ? ['movie', 'series'] : [effTypeEarly];
+    const [base, recent, ytsRaw, cinRaw] = await Promise.all([
       tvmazeBaseShows().catch(() => []),
       tvmazeRecentShows().catch(() => []),
       (async () => {
@@ -848,13 +871,21 @@ async function loadAssistant() {
         for (const x of b.flat()) if (x && !m.has(x.id)) m.set(x.id, x);
         return [...m.values()];
       })(),
+      (async () => {
+        // Cinemeta por gênero pedido (funciona mesmo com YTS bloqueado na rede)
+        const reqs = [];
+        for (const t of cinTypes) for (const g of cinGenres) for (const skip of [0, 50]) reqs.push({ t, g, skip });
+        const settled = await Promise.allSettled(reqs.map(r => cinemetaCatalog(r.t, r.g, r.skip).catch(() => [])));
+        return settled.filter(r => r.status === 'fulfilled').map(r => r.value).flat();
+      })(),
     ]);
     const seen = new Map();
-    for (const s of [...base, ...recent]) if (s && !seen.has('tvmaze-' + s.id)) seen.set('tvmaze-' + s.id, tvmazeToItem(s));
-    for (const m of ytsRaw) seen.set('yts-' + m.id, ytsToItem(m));
+    const put = (it) => { const k = it.imdb ? 'tt-' + it.imdb : it.key; if (!seen.has(k)) seen.set(k, it); };
+    for (const s of [...base, ...recent]) if (s) put(tvmazeToItem(s));
+    for (const m of ytsRaw) put(ytsToItem(m));
+    for (const c of cinRaw) put(c);
     pool = [...seen.values()];
   }
-  pool = pool.filter(it => state.type === 'all' || it.type === state.type);
   const effType = p.media && p.media !== 'all' ? p.media : state.type;
   pool = pool.filter(it => effType === 'all' || it.type === effType);
   // Fidelidade total: gênero pedido (ou inferido da frase) vira filtro rígido;
