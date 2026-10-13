@@ -1052,6 +1052,13 @@ function bind() {
     load(true);
   }
   $('#suggestBtn').addEventListener('click', runAssistant);
+  $('#clearMoodBtn').addEventListener('click', () => {
+    $('#moodInput').value = '';
+    state.moodText = '';
+    $('#moodSummary').classList.add('hidden');
+    $('#moodInput').focus();
+    load(true);
+  });
   if (state.userLoc?.label && state.userLoc.label !== 'Sua localização') $('#cityInput').value = state.userLoc.label;
   $('#locForm').addEventListener('submit', async (e) => {
     e.preventDefault();
