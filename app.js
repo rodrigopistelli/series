@@ -224,6 +224,7 @@ function render() {
     if (state.ytsDown && state.type !== 'series') statusEl.textContent += ' • filmes indisponíveis: sua rede/AdBlock pode estar bloqueando o provedor';
   }
   for (const it of slice) {
+    try {
     const card = document.createElement('article');
     card.className = 'card';
     card.dataset.card = it.key;
@@ -251,6 +252,7 @@ function render() {
     card.querySelector('[data-act="watched"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatched(it); });
     card.querySelector('[data-act="watching"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatching(it); });
     grid.appendChild(card);
+    } catch (e) { console.error('card', it && it.key, e); }
   }
   loadMoreBtn.classList.toggle('hidden', state.shown >= list.length);
   enrichIMDb(slice); // busca a nota real IMDb da leva visível, sem travar a tela
