@@ -3,6 +3,7 @@
    - TMDB (se houver API Key): filmes + séries, trending, top rated, upcoming, discover com filtros, capas originais.
    - Sem chave: TVMaze (séries) + YTS (filmes). Sem build, sem backend.
 */
+const BUILD = '2026-10-14e'; // marcador p/ diagnóstico (console)
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid'), statusEl = $('#status'), loadMoreBtn = $('#loadMore');
 
@@ -176,27 +177,51 @@ function isFav(it) { return inList(state.favorites, it); }
 function isWatched(it) { return inList(state.watched, it); }
 function isWatching(it) { return inList(state.watching, it); }
 function isLater(it) { return inList(state.watchlist, it); }
+function toast(msg, ok = true) {
+  let el = document.querySelector('#toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.className = 'show ' + (ok ? 'ok' : 'err');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 2600);
+}
 function toggleFav(it) {
-  const i = state.favorites.findIndex(f => f.key === it.key);
-  if (i >= 0) state.favorites.splice(i, 1); else state.favorites.push(it);
-  saveFavs(); render();
+  try {
+    const i = state.favorites.findIndex(f => f.key === it.key);
+    const added = i < 0;
+    if (!added) state.favorites.splice(i, 1); else state.favorites.push(it);
+    saveFavs(); render();
+    toast(added ? '★ Salvo nos favoritos' : '☆ Saiu dos favoritos');
+  } catch (e) { console.error(e); toast('Erro ao salvar — abra o console (F12)', false); }
 }
 function toggleWatched(it) {
-  const i = state.watched.findIndex(f => f.key === it.key);
-  if (i >= 0) state.watched.splice(i, 1);
-  else { state.watched.push(it); state.watching = state.watching.filter(f => f.key !== it.key); saveWatching(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
-  saveWatched(); render();
+  try {
+    const i = state.watched.findIndex(f => f.key === it.key);
+    const added = i < 0;
+    if (!added) state.watched.splice(i, 1);
+    else { state.watched.push(it); state.watching = state.watching.filter(f => f.key !== it.key); saveWatching(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
+    saveWatched(); render();
+    toast(added ? '✓ Marcado como assistido' : '✓ Desmarcado');
+  } catch (e) { console.error(e); toast('Erro ao salvar — abra o console (F12)', false); }
 }
 function toggleWatching(it) {
-  const i = state.watching.findIndex(f => f.key === it.key);
-  if (i >= 0) state.watching.splice(i, 1);
-  else { state.watching.push(it); state.watched = state.watched.filter(f => f.key !== it.key); saveWatched(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
-  saveWatching(); render();
+  try {
+    const i = state.watching.findIndex(f => f.key === it.key);
+    const added = i < 0;
+    if (!added) state.watching.splice(i, 1);
+    else { state.watching.push(it); state.watched = state.watched.filter(f => f.key !== it.key); saveWatched(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
+    saveWatching(); render();
+    toast(added ? '▶ Em acompanhamento' : '▶ Removido do acompanhamento');
+  } catch (e) { console.error(e); toast('Erro ao salvar — abra o console (F12)', false); }
 }
 function toggleLater(it) {
-  const i = state.watchlist.findIndex(f => f.key === it.key);
-  if (i >= 0) state.watchlist.splice(i, 1); else state.watchlist.push(it);
-  saveWatchlist(); render();
+  try {
+    const i = state.watchlist.findIndex(f => f.key === it.key);
+    const added = i < 0;
+    if (!added) state.watchlist.splice(i, 1); else state.watchlist.push(it);
+    saveWatchlist(); render();
+    toast(added ? '🔖 Guardado para depois' : '🔖 Saiu da lista');
+  } catch (e) { console.error(e); toast('Erro ao salvar — abra o console (F12)', false); }
 }
 function currentBase() {
   if (state.view === 'favs') return state.favorites;
@@ -235,7 +260,12 @@ async function translateEN(text) {
   try {
     const r = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(t) + '&langpair=en|pt-BR');
     const out = (await r.json())?.responseData?.translatedText;
-    if (out && !/MYMEMORY WARNING/i.test(out)) { ptCache[key] = out; savePtCache(); return out; }
+    if (out && !/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(out)) { ptCache[key] = out; savePtCache(); return out; }
+  } catch {}
+  try { // reserva: Google (não oficial)
+    const r = await fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=pt-BR&dt=t&q=' + encodeURIComponent(t));
+    const out = ((await r.json())[0] || []).map(s => s[0]).join('');
+    if (out && out !== t) { ptCache[key] = out; savePtCache(); return out; }
   } catch {}
   return text;
 }
@@ -1407,4 +1437,5 @@ function bind() {
 setupFilters();
 bind();
 updateCounts();
+console.log('CineSéries build ' + BUILD);
 load(true);
