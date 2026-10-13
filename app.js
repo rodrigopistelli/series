@@ -387,6 +387,7 @@ function render() {
   loadMoreBtn.classList.toggle('hidden', state.shown >= list.length);
   enrichIMDb(slice); // busca a nota real IMDb da leva visível, sem travar a tela
   enrichPT(slice); // traduz sinopses da leva visível, com cache
+  refreshHomeMine(); // na Início, atualiza stats e "continue assistindo" junto
 }
 
 async function resolveTmdbImdb(it) {
@@ -1202,15 +1203,19 @@ async function loadHome() {
       enrichIMDb(movies); enrichPT(movies);
     }
   } catch { if (box) box.innerHTML = '<p class="hint">Não foi possível carregar agora.</p>'; }
+  refreshHomeMine();
+}
+function refreshHomeMine() {
+  if (state.tab !== 'home') return;
+  renderMyStats();
   const w = $('#homeWatching');
-  if (w) {
-    w.innerHTML = '';
-    const list = state.watching.slice(0, 4);
-    if (!list.length) w.innerHTML = '<p class="hint">Nada em acompanhamento — marque ▶ Vendo em qualquer título.</p>';
-    else {
-      for (const it of list) { try { w.appendChild(buildCard(it)); } catch (e) { console.error(e); } }
-      enrichIMDb(list); enrichPT(list);
-    }
+  if (!w) return;
+  w.innerHTML = '';
+  const list = state.watching.slice(0, 4);
+  if (!list.length) w.innerHTML = '<p class="hint">Nada em acompanhamento — marque ▶ Vendo em qualquer título.</p>';
+  else {
+    for (const it of list) { try { w.appendChild(buildCard(it)); } catch (e) { console.error(e); } }
+    enrichIMDb(list); enrichPT(list);
   }
 }
 
