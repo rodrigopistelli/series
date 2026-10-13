@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CineSéries — Filmes e Séries em alta, Top IMDb e Lançamentos</title>
+<meta name="description" content="Busque filmes e séries com maiores notas no IMDb, lançamentos e títulos em alta. Filtros por ano e nota, com capas originais. Hospedagem 100% grátis." />
+<link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🎬</span>
+    <div>
+      <strong>CineSéries</strong>
+      <small>Top IMDb • Em alta • Lançamentos</small>
+    </div>
+  </div>
+  <form id="searchForm" class="search" autocomplete="off">
+    <input id="searchInput" type="search" placeholder="Buscar filme ou série… ex: Breaking Bad, Duna, The Last of Us" aria-label="Buscar" />
+    <button type="submit">Buscar</button>
+  </form>
+  <div class="top-actions">
+    <button id="favBtn" class="ghost" title="Ver favoritos">★ <span id="favCount">0</span></button>
+    <button id="watchedBtn" class="ghost" title="Ver já assistidos">✓ <span id="watchedCount">0</span></button>
+    <button id="watchingBtn" class="ghost" title="Ver assistindo">▶ <span id="watchingCount">0</span></button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button data-tab="all">📚 Todos</button>
+  <button data-tab="trending" class="active">🔥 Em alta</button>
+  <button data-tab="top">🏆 Maiores notas</button>
+  <button data-tab="releases">🆕 Lançamentos</button>
+  <button data-tab="search">🔎 Resultados</button>
+</nav>
+
+<section class="filters">
+  <div class="filter-group">
+    <label>Tipo</label>
+    <div class="seg" id="typeSeg">
+      <button data-type="all" class="active">Todos</button>
+      <button data-type="movie">Filmes</button>
+      <button data-type="series">Séries</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <label for="yearMin">Ano de</label>
+    <select id="yearMin"></select>
+  </div>
+  <div class="filter-group">
+    <label for="yearMax">até</label>
+    <select id="yearMax"></select>
+  </div>
+  <div class="filter-group">
+    <label for="genreFilter">Gênero</label>
+    <select id="genreFilter"><option value="">Todos</option></select>
+  </div>
+  <div class="filter-group">
+    <label for="sortFilter">Ordenar</label>
+    <select id="sortFilter">
+      <option value="rating_desc">Nota ↓</option>
+      <option value="year_desc">Ano ↓</option>
+      <option value="year_asc">Ano ↑</option>
+      <option value="title_asc">A–Z</option>
+    </select>
+  </div>
+  <button id="clearFilters" class="ghost">Limpar</button>
+</section>
+
+<main>
+  <div id="status" class="status">Carregando…</div>
+  <div id="grid" class="grid"></div>
+  <div class="pager">
+    <button id="loadMore" class="primary hidden">Carregar mais</button>
+  </div>
+</main>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <button id="modalClose" class="modal-close">×</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
