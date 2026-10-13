@@ -978,6 +978,11 @@ function bind() {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     state.tab = b.dataset.tab;
+    if (state.tab === 'assistant') {
+      state.moodText = '';
+      const ta = $('#moodInput'); if (ta) ta.value = '';
+      $('#moodSummary').classList.add('hidden');
+    }
     load(true);
   }));
   $('#typeSeg').addEventListener('click', (e) => {
@@ -1037,14 +1042,16 @@ function bind() {
     const ta = $('#moodInput');
     ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '') + b.textContent.trim() + ' ';
     ta.focus();
+    runAssistant();
   });
-  $('#suggestBtn').addEventListener('click', () => {
+  function runAssistant() {
     state.moodText = $('#moodInput').value;
     document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
     document.querySelector('[data-tab="assistant"]').classList.add('active');
     state.tab = 'assistant';
     load(true);
-  });
+  }
+  $('#suggestBtn').addEventListener('click', runAssistant);
   if (state.userLoc?.label && state.userLoc.label !== 'Sua localização') $('#cityInput').value = state.userLoc.label;
   $('#locForm').addEventListener('submit', async (e) => {
     e.preventDefault();
