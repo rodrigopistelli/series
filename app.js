@@ -14,7 +14,7 @@ const PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
 const YTS_MIRRORS = ['https://yts.mx/api', 'https://yts.am/api', 'https://yts.lt/api'];
 
 const state = {
-  tab: 'trending',
+  tab: 'all',
   type: 'all',
   query: '',
   yearMin: '',
