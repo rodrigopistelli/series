@@ -11,7 +11,7 @@ const TMDB_IMG_SMALL = 'https://image.tmdb.org/t/p/w500';
 const PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750"><rect width="100%" height="100%" fill="#161d33"/><text x="50%" y="50%" fill="#9aa4c7" font-size="28" text-anchor="middle">Sem capa</text></svg>`);
 
-const YTS_MIRRORS = ['https://yts.mx/api', 'https://yts.am/api', 'https://yts.lt/api'];
+const YTS_MIRRORS = ['https://yts.am/api', 'https://yts.mx/api', 'https://yts.lt/api']; // am primeiro: mx/lt instáveis
 
 const state = {
   tab: 'all',
@@ -631,6 +631,18 @@ async function loadMoviesFree() {
   let sort = sortMap[state.tab] || 'like_count';
   if (hasYearFilter && state.tab !== 'search') sort = 'year';
   const isSearch = state.tab === 'search' && state.query;
+  if (state.tab === 'nowplaying' && !isSearch) {
+    // "Em cartaz" sem chave: ordenar só por ano traz lixo obscuro (ex. 2027 nota 2).
+    // Em vez disso: adicionados recentemente + nota ≥ 6 + ano dentro da janela real.
+    const nowY = new Date().getFullYear();
+    const batches = await Promise.all([1, 2].map(page => ytsFetch({
+      limit: 50, page, sort_by: 'date_added', order_by: 'desc',
+      with_rt_ratings: false, minimum_rating: 6,
+    }).catch(() => [])));
+    const seen = new Map();
+    for (const m of batches.flat()) if (m && !seen.has(m.id)) seen.set(m.id, m);
+    return [...seen.values()].map(ytsToItem).filter(it => it.year >= nowY - 1 && it.year <= nowY + 1 && it.rating >= 6);
+  }
   // Busca: só a página atual. "Todos" sem ano: 3 páginas p/ amplitude.
   // Listagem com filtro de ano: 4 páginas ordenadas por ano p/ cobrir o ano.
   const pages = isSearch ? [state.page]
