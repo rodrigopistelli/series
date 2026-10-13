@@ -1193,7 +1193,7 @@ async function load(reset = true) {
   document.querySelector('.pager').classList.toggle('hidden', onHome);
   $('#status').classList.toggle('hidden', onHome);
   if (!onHome) { $('#reviewBox').classList.add('hidden'); $('#reviewBox').innerHTML = ''; }
-  document.querySelector('.filters').classList.toggle('filters-off', state.tab === 'assistant');
+  document.querySelector('.filters').classList.toggle('filters-off', state.tab === 'assistant' || state.tab === 'home');
   if (state.tab === 'nowplaying') {
     if (state.userLoc && !state.cinemas.length) loadCinemas();
     else renderCinemas();
