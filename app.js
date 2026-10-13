@@ -31,6 +31,8 @@ const state = {
   watched: JSON.parse(localStorage.getItem('cineseries_watched') || '[]'),
   watching: JSON.parse(localStorage.getItem('cineseries_watching') || '[]'),
   view: 'all', // all | favs | watched | watching
+  userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
+  cinemas: [],
   tvmazeCache: null,      // base (págs 0-1, clássicos p/ top)
   tvmazeRecent: null,     // bloco contíguo mais novo (sem buracos)
   loadToken: 0,           // invalida enriquecimento em 2º plano ao trocar filtro/aba
@@ -275,6 +277,7 @@ function openModal(it) {
           <button class="primary" id="mFav">${isFav(it) ? '★ Remover dos favoritos' : '☆ Favoritar'}</button>
           <button class="ghost ${isWatched(it) ? 'on' : ''}" id="mWatched">${isWatched(it) ? '✓ Assistido' : '✓ Já vi'}</button>
           <button class="ghost ${isWatching(it) ? 'on' : ''}" id="mWatching">${isWatching(it) ? '▶ Assistindo' : '▶ Vendo'}</button>
+          ${it.type === 'movie' ? `<a href="https://www.google.com/search?q=${encodeURIComponent(it.title + ' ' + (it.year || '') + ' sessões cinema ' + (state.userLoc?.label || ''))}" target="_blank" rel="noopener"><button class="ghost">🎟 Sessões</button></a>` : ''}
           ${it.trailer ? `<a href="${it.trailer}" target="_blank" rel="noopener"><button class="ghost">▶ Trailer</button></a>` : ''}
         </div>
         <p class="hint">Capa original carregada de ${it.source}.</p>
@@ -361,6 +364,11 @@ async function loadTMDB() {
   const out = [];
   const wantMovies = state.type === 'all' || state.type === 'movie';
   const wantTv = state.type === 'all' || state.type === 'series';
+  if (state.tab === 'nowplaying') {
+    if (wantMovies) out.push(...(await tmdb('/movie/now_playing', { page: state.page, region: 'BR' })).results.map(x => ({ ...x, media_type: 'movie' })).map(tmdbToItem));
+    if (wantTv) out.push(...(await tmdb('/tv/on_the_air', { page: state.page })).results.map(x => ({ ...x, media_type: 'tv' })).map(tmdbToItem));
+    return out;
+  }
   if (state.tab === 'top' || state.tab === 'all') {
     if (state.tab === 'all') base['vote_count.gte'] = 10; // "Todos": catálogo amplo, só respeita os filtros
     if (wantMovies) out.push(...(await tmdb('/discover/movie', base)).results.map(x => ({ ...x, media_type: 'movie' })).map(tmdbToItem));
@@ -556,7 +564,7 @@ async function loadSeriesFree() {
   const yf = !!(state.yearMin || state.yearMax);
   const lo = state.yearMin ? +state.yearMin : null;
   const hi = state.yearMax ? +state.yearMax : null;
-  if (state.tab === 'releases') {
+  if (state.tab === 'releases' || state.tab === 'nowplaying') {
     const [week, recent, fromYear] = await Promise.all([
       tvmazeScheduleWeek().catch(() => []),
       tvmazeRecentShows().catch(() => []),
@@ -619,7 +627,7 @@ async function loadMoviesFree() {
   // 2025 quase nunca vinham. Com filtro de ano, ordenamos por ano/data e
   // buscamos várias páginas (até ~200 filmes) para o ano existir no lote.
   const hasYearFilter = !!(state.yearMin || state.yearMax);
-  const sortMap = { trending: 'like_count', top: 'rating', all: 'like_count', releases: 'year', search: 'date_added' };
+  const sortMap = { trending: 'like_count', top: 'rating', all: 'like_count', nowplaying: 'year', releases: 'year', search: 'date_added' };
   let sort = sortMap[state.tab] || 'like_count';
   if (hasYearFilter && state.tab !== 'search') sort = 'year';
   const isSearch = state.tab === 'search' && state.query;
@@ -644,10 +652,93 @@ async function loadMoviesFree() {
   return [...seen.values()].map(ytsToItem);
 }
 
+// ---------- Em cartaz: cinemas próximos (OpenStreetMap, grátis, sem chave) ----------
+function haversineKm(a, b, c, d) {
+  const R = 6371, t = Math.PI / 180;
+  const h = Math.sin((c - a) * t / 2) ** 2 + Math.cos(a * t) * Math.cos(c * t) * Math.sin((d - b) * t / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function formatAddr(t = {}) {
+  const parts = [];
+  const street = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(', ');
+  if (street) parts.push(street);
+  const hood = t['addr:suburb'] || t['addr:district'] || t['addr:neighbourhood'];
+  const city = t['addr:city'] || t['addr:town'] || t['addr:village'];
+  if (hood && city) parts.push(`${hood} — ${city}`);
+  else if (hood || city) parts.push(hood || city);
+  if (t['addr:postcode']) parts.push(t['addr:postcode']);
+  return parts.join(' • ') || 'Endereço não cadastrado no mapa';
+}
+async function overpassCinemas(lat, lon, radius = 25000) {
+  const q = `[out:json][timeout:25];(node["amenity"="cinema"](around:${radius},${lat},${lon});way["amenity"="cinema"](around:${radius},${lat},${lon});relation["amenity"="cinema"](around:${radius},${lat},${lon}););out center 20;`;
+  let lastErr;
+  for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      const r = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) });
+      if (!r.ok) throw new Error('Overpass ' + r.status);
+      return (await r.json()).elements || [];
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('Overpass indisponível');
+}
+function saveLoc() { try { localStorage.setItem('cineseries_loc', JSON.stringify(state.userLoc)); } catch {} }
+async function reverseCity(lat, lon) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=pt-BR&lat=${lat}&lon=${lon}`);
+    const a = (await r.json()).address || {};
+    const city = a.city || a.town || a.village || a.municipality || '';
+    return city && a.state ? `${city} — ${a.state}` : city;
+  } catch { return ''; }
+}
+async function geocodeCity(q) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=pt-BR&countrycodes=br&q=${encodeURIComponent(q)}`);
+  const j = await r.json();
+  if (!j.length) throw new Error('not found');
+  return { lat: +j[0].lat, lon: +j[0].lon, label: j[0].display_name.split(',').slice(0, 2).join(',').trim() };
+}
+async function loadCinemas() {
+  const box = $('#cinemaList'), st = $('#cinemaStatus');
+  if (!state.userLoc) { st.textContent = 'Informe sua cidade ou toque em 📍.'; box.innerHTML = ''; return; }
+  st.textContent = `Buscando cinemas perto de ${state.userLoc.label}…`;
+  box.innerHTML = '';
+  try {
+    const els = await overpassCinemas(state.userLoc.lat, state.userLoc.lon);
+    state.cinemas = els.map(e => {
+      const lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon;
+      return {
+        id: `osm-${e.type}-${e.id}`, name: e.tags?.name || 'Cinema',
+        addr: formatAddr(e.tags), lat, lon,
+        dist: lat != null ? haversineKm(state.userLoc.lat, state.userLoc.lon, lat, lon) : null,
+      };
+    }).filter(c => c.lat != null).sort((a, b) => (a.dist ?? 1e9) - (b.dist ?? 1e9)).slice(0, 12);
+    renderCinemas();
+  } catch (e) { console.error(e); st.textContent = 'Não foi possível buscar cinemas agora. Tente de novo.'; }
+}
+function renderCinemas() {
+  const box = $('#cinemaList'), st = $('#cinemaStatus');
+  if (!state.cinemas.length) {
+    st.textContent = state.userLoc ? `Nenhum cinema achado num raio de 25 km de ${state.userLoc.label}.` : 'Informe sua cidade ou toque em 📍.';
+    box.innerHTML = '';
+    return;
+  }
+  st.textContent = `${state.cinemas.length} cinemas perto de ${state.userLoc.label} • Mapa abre a rota, Sessões mostra horários`;
+  const cityQ = state.userLoc.label || '';
+  box.innerHTML = state.cinemas.map(c => {
+    const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.name + ' ' + c.addr)}`;
+    const sess = `https://www.google.com/search?q=${encodeURIComponent('sessões horários ' + c.name + ' ' + cityQ)}`;
+    return `<article class="cinema-card"><strong>${c.name.replace(/</g, '&lt;')}</strong><small>${c.addr}</small><small>${c.dist != null ? c.dist.toFixed(1) + ' km de distância' : ''}</small><div class="cinema-links"><a href="${maps}" target="_blank" rel="noopener"><button>📍 Mapa</button></a><a href="${sess}" target="_blank" rel="noopener"><button class="ghost">🎟 Sessões</button></a></div></article>`;
+  }).join('');
+}
+
 // ---------- orquestração ----------
 async function load(reset = true) {
   if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = 'all'; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
   state.shown = state.perPage; // primeira leva; "carregar mais" aumenta
+  $('#cinemaPanel').classList.toggle('hidden', state.tab !== 'nowplaying');
+  if (state.tab === 'nowplaying') {
+    if (state.userLoc && !state.cinemas.length) loadCinemas();
+    else renderCinemas();
+  }
   statusEl.textContent = 'Carregando…';
   try {
     let items = [];
@@ -747,6 +838,26 @@ function bind() {
   $('#favBtn').addEventListener('click', () => setView('favs'));
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
+  if (state.userLoc?.label && state.userLoc.label !== 'Sua localização') $('#cityInput').value = state.userLoc.label;
+  $('#locForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = $('#cityInput').value.trim();
+    if (!q) return;
+    $('#cinemaStatus').textContent = `Localizando ${q}…`;
+    try { state.userLoc = await geocodeCity(q); saveLoc(); loadCinemas(); }
+    catch { $('#cinemaStatus').textContent = 'Cidade não encontrada. Tente "Cidade, UF".'; }
+  });
+  $('#geoBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) { $('#cinemaStatus').textContent = 'Geolocalização indisponível: digite sua cidade.'; return; }
+    $('#cinemaStatus').textContent = 'Pedindo sua localização…';
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lon } = pos.coords;
+      const city = await reverseCity(lat, lon).catch(() => '');
+      state.userLoc = { lat, lon, label: city || 'Sua localização' };
+      $('#cityInput').value = city || '';
+      saveLoc(); loadCinemas();
+    }, () => { $('#cinemaStatus').textContent = 'Permissão negada. Digite sua cidade ou ative o GPS.'; }, { timeout: 15000 });
+  });
 
   $('#modalClose').addEventListener('click', () => $('#modal').classList.add('hidden'));
 }

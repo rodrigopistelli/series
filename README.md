@@ -53,7 +53,7 @@ python -m http.server 8000
 4. A chave fica salva só no seu navegador (`localStorage`). Para publicar com a chave embutida, **não** faça isso — cada visitante usa a própria chave.
 
 ## ✨ Recursos
-- 🔥 Em alta • 📚 Todos • 🏆 Maiores notas • 🆕 Lançamentos • 🔎 Busca
+- 🔥 Em alta • 📚 Todos • 🏆 Maiores notas • 🆕 Lançamentos • 🎟 Em cartaz • 🔎 Busca
 - Filtros: tipo (filme/série), ano (de–até), nota mínima (slider), gênero, ordenação
 - ★ Dourado = nota real do IMDb (buscada sob demanda, sem chave); sem selo = nota da fonte. Ordenação e filtro de nota usam a nota da fonte.
 - Cards com capa original, nota ★, ano, sinopse

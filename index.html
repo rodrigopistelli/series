@@ -35,6 +35,7 @@
   <button data-tab="trending">🔥 Em alta</button>
   <button data-tab="top">🏆 Maiores notas</button>
   <button data-tab="releases">🆕 Lançamentos</button>
+  <button data-tab="nowplaying">🎟 Em cartaz</button>
   <button data-tab="search">🔎 Resultados</button>
 </nav>
 
@@ -65,6 +66,21 @@
     </select>
   </div>
   <button id="clearFilters" class="ghost">Limpar</button>
+</section>
+
+<section id="cinemaPanel" class="cinema-panel hidden">
+  <div class="cinema-head">
+    <div>
+      <strong>🎟 Cinemas próximos</strong>
+      <small id="cinemaStatus">Informe sua cidade ou use sua localização.</small>
+    </div>
+    <form id="locForm" class="loc-form" autocomplete="off">
+      <input id="cityInput" type="search" placeholder="Sua cidade… ex: São Paulo, SP" aria-label="Cidade" />
+      <button type="submit">Buscar</button>
+      <button type="button" id="geoBtn" class="ghost" title="Usar minha localização">📍</button>
+    </form>
+  </div>
+  <div id="cinemaList" class="cinema-list"></div>
 </section>
 
 <main>
