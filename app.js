@@ -30,7 +30,8 @@ const state = {
   favorites: JSON.parse(localStorage.getItem('cineseries_favs') || '[]'),
   watched: JSON.parse(localStorage.getItem('cineseries_watched') || '[]'),
   watching: JSON.parse(localStorage.getItem('cineseries_watching') || '[]'),
-  view: 'all', // all | favs | watched | watching
+  watchlist: JSON.parse(localStorage.getItem('cineseries_watchlist') || '[]'),
+  view: 'all', // all | favs | watched | watching | watchlist
   moodText: '',
   moodProfile: null,
   assistantEmpty: '',
@@ -159,15 +160,18 @@ function applyClientFilters(items) {
 function saveFavs() { localStorage.setItem('cineseries_favs', JSON.stringify(state.favorites)); updateCounts(); }
 function saveWatched() { localStorage.setItem('cineseries_watched', JSON.stringify(state.watched)); updateCounts(); }
 function saveWatching() { localStorage.setItem('cineseries_watching', JSON.stringify(state.watching)); updateCounts(); }
+function saveWatchlist() { localStorage.setItem('cineseries_watchlist', JSON.stringify(state.watchlist)); updateCounts(); }
 function updateCounts() {
   $('#favCount').textContent = state.favorites.length;
   $('#watchedCount').textContent = state.watched.length;
   $('#watchingCount').textContent = state.watching.length;
+  $('#laterCount').textContent = state.watchlist.length;
 }
 function inList(list, it) { return list.some(f => f.key === it.key); }
 function isFav(it) { return inList(state.favorites, it); }
 function isWatched(it) { return inList(state.watched, it); }
 function isWatching(it) { return inList(state.watching, it); }
+function isLater(it) { return inList(state.watchlist, it); }
 function toggleFav(it) {
   const i = state.favorites.findIndex(f => f.key === it.key);
   if (i >= 0) state.favorites.splice(i, 1); else state.favorites.push(it);
@@ -176,23 +180,29 @@ function toggleFav(it) {
 function toggleWatched(it) {
   const i = state.watched.findIndex(f => f.key === it.key);
   if (i >= 0) state.watched.splice(i, 1);
-  else { state.watched.push(it); state.watching = state.watching.filter(f => f.key !== it.key); saveWatching(); }
+  else { state.watched.push(it); state.watching = state.watching.filter(f => f.key !== it.key); saveWatching(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
   saveWatched(); render();
 }
 function toggleWatching(it) {
   const i = state.watching.findIndex(f => f.key === it.key);
   if (i >= 0) state.watching.splice(i, 1);
-  else { state.watching.push(it); state.watched = state.watched.filter(f => f.key !== it.key); saveWatched(); }
+  else { state.watching.push(it); state.watched = state.watched.filter(f => f.key !== it.key); saveWatched(); state.watchlist = state.watchlist.filter(f => f.key !== it.key); saveWatchlist(); }
   saveWatching(); render();
+}
+function toggleLater(it) {
+  const i = state.watchlist.findIndex(f => f.key === it.key);
+  if (i >= 0) state.watchlist.splice(i, 1); else state.watchlist.push(it);
+  saveWatchlist(); render();
 }
 function currentBase() {
   if (state.view === 'favs') return state.favorites;
   if (state.view === 'watched') return state.watched;
   if (state.view === 'watching') return state.watching;
+  if (state.view === 'watchlist') return state.watchlist;
   return state.filtered;
 }
 function paintViewButtons() {
-  const map = { favs: '#favBtn', watched: '#watchedBtn', watching: '#watchingBtn' };
+  const map = { favs: '#favBtn', watched: '#watchedBtn', watching: '#watchingBtn', watchlist: '#laterBtn' };
   for (const [v, sel] of Object.entries(map)) {
     const b = $(sel);
     if (b) b.style.borderColor = state.view === v ? '#f5c518' : '';
@@ -281,6 +291,7 @@ function buildCard(it) {
         <div class="card-flags">
           <button class="flag ${isWatched(it) ? 'on' : ''}" data-act="watched" title="Marcar como assistido">✓ Já vi</button>
           <button class="flag ${isWatching(it) ? 'on' : ''}" data-act="watching" title="Marcar como assistindo">▶ Vendo</button>
+          <button class="flag ${isLater(it) ? 'on' : ''}" data-act="later" title="Guardar para assistir depois">🔖 Depois</button>
         </div>
         <button class="details-btn">Detalhes</button>
       </div>`;
@@ -289,6 +300,7 @@ function buildCard(it) {
     card.querySelector('.fav').addEventListener('click', (e) => { e.stopPropagation(); toggleFav(it); });
     card.querySelector('[data-act="watched"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatched(it); });
     card.querySelector('[data-act="watching"]').addEventListener('click', (e) => { e.stopPropagation(); toggleWatching(it); });
+    card.querySelector('[data-act="later"]').addEventListener('click', (e) => { e.stopPropagation(); toggleLater(it); });
     return card;
 }
 function render() {
@@ -304,6 +316,7 @@ function render() {
       favs: 'Você ainda não favoritou nada. Toque na ★ de um título para salvar.',
       watched: 'Nenhum título marcado como assistido. Toque em "✓ Já vi" para marcar.',
       watching: 'Nenhum título em acompanhamento. Toque em "▶ Vendo" para marcar.',
+      watchlist: 'Sua lista de depois está vazia. Toque em "🔖 Depois" para guardar.',
     };
     statusEl.textContent = (state.view !== 'all' && hints[state.view])
       ? hints[state.view]
@@ -362,6 +375,7 @@ function openModal(it) {
           <button class="primary" id="mFav">${isFav(it) ? '★ Remover dos favoritos' : '☆ Favoritar'}</button>
           <button class="ghost ${isWatched(it) ? 'on' : ''}" id="mWatched">${isWatched(it) ? '✓ Assistido' : '✓ Já vi'}</button>
           <button class="ghost ${isWatching(it) ? 'on' : ''}" id="mWatching">${isWatching(it) ? '▶ Assistindo' : '▶ Vendo'}</button>
+          <button class="ghost ${isLater(it) ? 'on' : ''}" id="mLater">${isLater(it) ? '🔖 Na lista' : '🔖 Depois'}</button>
           ${it.type === 'movie' ? `<a href="https://www.google.com/search?q=${encodeURIComponent(it.title + ' ' + (it.year || '') + ' sessões cinema ' + (state.userLoc?.label || ''))}" target="_blank" rel="noopener"><button class="ghost">🎟 Sessões</button></a>` : ''}
           ${it.trailer ? `<a href="${it.trailer}" target="_blank" rel="noopener"><button class="ghost">▶ Trailer</button></a>` : ''}
         </div>
@@ -372,6 +386,7 @@ function openModal(it) {
   $('#mFav').addEventListener('click', () => { toggleFav(it); openModal(it); });
   $('#mWatched').addEventListener('click', () => { toggleWatched(it); openModal(it); });
   $('#mWatching').addEventListener('click', () => { toggleWatching(it); openModal(it); });
+  $('#mLater').addEventListener('click', () => { toggleLater(it); openModal(it); });
   // Sinopse em PT ao abrir o detalhe
   if (it.overview && !it._pt && !state.tmdbKey) {
     translateEN(it.overview).then(v => {
@@ -1181,6 +1196,7 @@ function bind() {
   $('#favBtn').addEventListener('click', () => setView('favs'));
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
+  $('#laterBtn').addEventListener('click', () => setView('watchlist'));
   $('#modeSeg').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
