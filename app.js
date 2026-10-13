@@ -11,7 +11,7 @@ const TMDB_IMG_SMALL = 'https://image.tmdb.org/t/p/w500';
 const PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750"><rect width="100%" height="100%" fill="#161d33"/><text x="50%" y="50%" fill="#9aa4c7" font-size="28" text-anchor="middle">Sem capa</text></svg>`);
 
-const YTS_MIRRORS = ['https://yts.am/api', 'https://yts.ag/api', 'https://yts.mx/api', 'https://yts.lt/api']; // am/ag ativos; mx/lt instáveis
+const YTS_MIRRORS = ['https://movies-api.accel.li/api', 'https://yts.am/api', 'https://yts.ag/api', 'https://yts.mx/api', 'https://yts.lt/api']; // endpoint oficial novo primeiro
 
 const state = {
   tab: 'all',
@@ -706,7 +706,7 @@ async function overpassCinemas(lat, lon, radius = 25000) {
 function saveLoc() { try { localStorage.setItem('cineseries_loc', JSON.stringify(state.userLoc)); } catch {} }
 async function reverseCity(lat, lon) {
   try {
-    const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}&lang=pt`);
+    const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}&lang=default`);
     const p = (await r.json()).features?.[0]?.properties || {};
     const city = p.city || p.name || '';
     return city && p.state ? `${city} — ${p.state}` : city;
@@ -715,7 +715,7 @@ async function reverseCity(lat, lon) {
 async function geocodeCity(q) {
   const m = q.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (m) return { lat: +m[1], lon: +m[2], label: `${m[1]}, ${m[2]}` };
-  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=pt`);
+  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=default`);
   if (!r.ok) throw new Error('geo ' + r.status);
   const f = (await r.json()).features?.[0];
   if (!f) throw new Error('not found');
