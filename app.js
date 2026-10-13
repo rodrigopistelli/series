@@ -33,6 +33,7 @@ const state = {
   view: 'all', // all | favs | watched | watching
   moodText: '',
   moodProfile: null,
+  assistantEmpty: '',
   userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
   cinemas: [],
   ytsDown: false, // provedor de filmes inacessível (bloqueio de rede/AdBlock?)
@@ -250,6 +251,8 @@ function render() {
       ? hints[state.view]
       : state.tab === 'assistant' && !state.moodText.trim()
         ? 'Descreva seu momento acima e toque em "Sugerir o que assistir".'
+        : state.tab === 'assistant' && state.assistantEmpty
+        ? state.assistantEmpty
         : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
         'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
   } else {
@@ -786,9 +789,13 @@ const COZY_GENRES = ['Drama', 'Romance', 'Mystery', 'Fantasy'];
 function analyzeMood(text) {
   const t = (text || '').toLowerCase();
   const has = (...ws) => ws.some(w => t.includes(w));
-  const p = { want: new Set(), avoid: new Set(), light: 0, maxRuntime: null, signals: [] };
+  const p = { want: new Set(), explicit: new Set(), avoid: new Set(), light: 0, maxRuntime: null, signals: [], media: null };
   const gmap = { 'terror': 'Horror', 'comédia': 'Comedy', 'comedia': 'Comedy', 'romance': 'Romance', 'ação': 'Action', 'acao': 'Action', 'aventura': 'Adventure', 'drama': 'Drama', 'ficção': 'Sci-Fi', 'ficcao': 'Sci-Fi', 'suspense': 'Thriller', 'animação': 'Animation', 'animacao': 'Animation', 'crime': 'Crime', 'documentário': 'Documentary', 'documentario': 'Documentary', 'fantasia': 'Fantasy', 'mistério': 'Mystery', 'misterio': 'Mystery', 'musical': 'Music', 'guerra': 'War', 'faroeste': 'Western', 'história': 'History', 'historia': 'History' };
-  for (const [k, g] of Object.entries(gmap)) if (t.includes(k)) { p.want.add(g); p.signals.push(`gênero ${k}`); }
+  for (const [k, g] of Object.entries(gmap)) if (t.includes(k)) { p.want.add(g); p.explicit.add(g); p.signals.push(`gênero ${k}`); }
+  if (/\bfilmes?\b/.test(t)) p.media = p.media === 'series' ? 'all' : 'movie';
+  if (/\bseriado|\bs[eé]ries?\b/.test(t)) p.media = p.media === 'movie' ? 'all' : 'series';
+  if (p.media === 'movie') p.signals.push('só filmes');
+  else if (p.media === 'series') p.signals.push('só séries');
   if (has('cansad', 'exaust', 'relax', 'tranquil', 'leve', 'sono', 'descansar')) { p.light++; LIGHT_GENRES.forEach(g => p.want.add(g)); p.signals.push('energia baixa → leve'); }
   if (has('animad', 'energia', 'adrenalina', 'agitad', 'intens', 'eletrizante')) { INTENSE_GENRES.forEach(g => p.want.add(g)); p.signals.push('energia alta → intenso'); }
   if (has('triste', 'depre', 'chorar', 'pra baixo', 'para baixo', ' mal', 'desanim')) { ['Comedy', 'Romance', 'Animation'].forEach(g => p.want.add(g)); p.avoid.add('Horror'); p.signals.push('astral baixo → para cima'); }
@@ -813,7 +820,7 @@ function scoreItem(it, p) {
   let s = (it.rating || 0) * 2;
   const gs = it.genres || [];
   for (const g of gs) {
-    if (p.want.has(g)) s += 3;
+    if (p.want.has(g)) s += 5;
     if (p.avoid.has(g)) s -= 6;
   }
   const wantsIntense = [...p.want].some(g => INTENSE_GENRES.includes(g));
@@ -826,6 +833,7 @@ async function loadAssistant() {
   const text = (state.moodText || '').trim();
   const p = analyzeMood(text);
   state.moodProfile = p;
+  state.assistantEmpty = '';
   const box = $('#moodSummary');
   if (box) {
     if (!text) box.classList.add('hidden');
@@ -856,6 +864,16 @@ async function loadAssistant() {
     pool = [...seen.values()];
   }
   pool = pool.filter(it => state.type === 'all' || it.type === state.type);
+  const effType = p.media && p.media !== 'all' ? p.media : state.type;
+  pool = pool.filter(it => effType === 'all' || it.type === effType);
+  if (p.explicit.size) {
+    // Gênero pedido explicitamente vira filtro rígido: sem ele, nota alta não salva.
+    pool = pool.filter(it => (it.genres || []).some(g => p.explicit.has(g)));
+    if (!pool.length) {
+      const tipo = effType === 'movie' ? 'filmes' : effType === 'series' ? 'séries' : 'títulos';
+      state.assistantEmpty = `Nada de ${[...p.explicit].join('/')} entre ${tipo} por aqui — tente outro gênero ou abra a aba Todos.`;
+    }
+  }
   return pool.map(it => ({ it, s: scoreItem(it, p) })).sort((a, b) => b.s - a.s).slice(0, 24).map(x => x.it);
 }
 
