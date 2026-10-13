@@ -854,13 +854,7 @@ async function loadAssistant() {
   state.moodProfile = p;
   state.assistantEmpty = '';
   const box = $('#moodSummary');
-  if (box) {
-    if (!text) box.classList.add('hidden');
-    else {
-      box.classList.remove('hidden');
-      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Todos os compatíveis, por nota e novidade. Filtros da barra pausados aqui — vale o que você escreveu.</small>`;
-    }
-  }
+  if (box && !text) box.classList.add('hidden');
   if (!text) return [];
   let pool = [];
   if (state.tmdbKey) {
@@ -911,6 +905,18 @@ async function loadAssistant() {
   pool.sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.year || 0) - (a.year || 0));
   if (!pool.length) {
     state.assistantEmpty = `Nada compatível com: ${p.signals.length ? p.signals.join(' • ') : 'sua descrição'} — tente outra frase ou abra a aba Todos.`;
+  } else if (box) {
+    // Veredito: como escolhi, quais e chance de gostar.
+    const fmt = x => `<b>${x.title}</b>${x.year ? ' (' + x.year + ')' : ''} ★${(x.imdbRating || x.rating || 0).toFixed(1)}`;
+    const top = pool.slice(0, 3);
+    const r = top[0].imdbRating || top[0].rating || 0;
+    const conf = p.explicit.size && r >= 7.5 ? 'alta' : r >= 7 ? 'boa' : r >= 5.5 ? 'razoável' : 'incerta';
+    const extra = conf === 'alta' || conf === 'boa' ? '' : ' — me conte mais (gênero, época) que eu afino.';
+    box.classList.remove('hidden');
+    box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}`
+      + `<br><br>Minha aposta é ${fmt(top[0])}: combina com ${p.signals.slice(0, 3).join(', ') || 'seu momento'}. <b>Chance de gostar: ${conf}</b>${extra}`
+      + (top.length > 1 ? `<br>Também entram na lista: ${top.slice(1).map(fmt).join(' • ')}.` : '')
+      + `<br><small>Todos os compatíveis, por nota e novidade. Filtros da barra pausados aqui — vale o que você escreveu.</small>`;
   }
   return pool;
 }
