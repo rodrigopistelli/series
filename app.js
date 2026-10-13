@@ -132,6 +132,7 @@ function setupFilters() {
 function stripHtml(h = '') { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.trim(); }
 function yearOf(item) { return item.year || null; }
 function applyClientFilters(items) {
+  if (state.tab === 'assistant') return items; // assistente: frase já filtrou e ordenou; barra pausada
   // normaliza ano: se "de" > "até", inverte automaticamente
   let lo = state.yearMin ? +state.yearMin : null;
   let hi = state.yearMax ? +state.yearMax : null;
@@ -805,6 +806,17 @@ function analyzeMood(text) {
   if (has('medo', 'assustar', 'coragem')) { ['Thriller', 'Mystery'].forEach(g => p.want.add(g)); p.signals.push('clima de suspense'); }
   if (has('comendo', 'comer', 'pipoca', 'janta', 'almoç', 'almoc', 'lanche', 'pizza', 'jantar')) { p.maxRuntime = 140; p.light++; ['Comedy', 'Adventure', 'Animation'].forEach(g => p.want.add(g)); p.signals.push('comendo → até ~2h20 e leve'); }
   if (has('criança', 'crianca', 'filho', 'filha', 'família', 'familia', 'kids')) { ['Animation', 'Family', 'Comedy'].forEach(g => p.want.add(g)); p.signals.push('em família'); }
+  // ano na frase: "de 2022", "anos 90", "recente/lançamento" (ignora "de novo" = repetir)
+  const y4 = t.match(/\b(19\d{2}|20\d{2})\b/);
+  const dec = t.match(/\banos?\s?(80|90|2000)\b/);
+  if (y4) { p.yearMin = p.yearMax = +y4[1]; p.signals.push('de ' + y4[1]); }
+  else if (dec) {
+    if (dec[1] === '2000') { p.yearMin = 2000; p.yearMax = 2009; }
+    else { p.yearMin = 1900 + +dec[1]; p.yearMax = 1900 + +dec[1] + 9; }
+    p.signals.push('anos ' + dec[1]);
+  } else if (!t.includes('de novo') && has('recente', 'lançamento', 'lancamento', 'novidade', 'novo', 'nova', 'atual')) {
+    p.yearMin = new Date().getFullYear() - 2; p.signals.push('lançamentos recentes');
+  }
   let h = new Date().getHours();
   if (has('manhã', 'manha', 'café da manhã', 'cafe da manha')) h = 9;
   else if (has('madrugada')) h = 1;
@@ -846,7 +858,7 @@ async function loadAssistant() {
     if (!text) box.classList.add('hidden');
     else {
       box.classList.remove('hidden');
-      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Todos os compatíveis, dos mais bem avaliados e novos primeiro.</small>`;
+      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Todos os compatíveis, por nota e novidade. Filtros da barra pausados aqui — vale o que você escreveu.</small>`;
     }
   }
   if (!text) return [];
@@ -894,6 +906,8 @@ async function loadAssistant() {
   if (must.size) pool = pool.filter(it => (it.genres || []).some(g => must.has(g)));
   if (p.avoid.size) pool = pool.filter(it => !(it.genres || []).some(g => p.avoid.has(g)));
   if (p.maxRuntime) pool = pool.filter(it => !it.runtime || it.runtime <= p.maxRuntime);
+  if (p.yearMin) pool = pool.filter(it => (it.year || 0) >= p.yearMin);
+  if (p.yearMax) pool = pool.filter(it => (it.year || 0) <= p.yearMax);
   pool.sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.year || 0) - (a.year || 0));
   if (!pool.length) {
     state.assistantEmpty = `Nada compatível com: ${p.signals.length ? p.signals.join(' • ') : 'sua descrição'} — tente outra frase ou abra a aba Todos.`;
@@ -907,6 +921,7 @@ async function load(reset = true) {
   state.shown = state.perPage; // primeira leva; "carregar mais" aumenta
   $('#cinemaPanel').classList.toggle('hidden', state.tab !== 'nowplaying');
   $('#assistantPanel').classList.toggle('hidden', state.tab !== 'assistant');
+  document.querySelector('.filters').classList.toggle('filters-off', state.tab === 'assistant');
   if (state.tab === 'nowplaying') {
     if (state.userLoc && !state.cinemas.length) loadCinemas();
     else renderCinemas();
