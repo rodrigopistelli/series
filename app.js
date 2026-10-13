@@ -238,7 +238,20 @@ function paintViewButtons() {
   }
 }
 function setView(v) {
-  state.view = (state.view === v) ? 'all' : v;
+  const next = (state.view === v) ? 'all' : v;
+  if (state.tab === 'home' && next !== 'all') {
+    // Na Início a grade fica oculta: abre os Todos já com a lista aplicada
+    state.view = next;
+    state.shown = state.perPage;
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === 'all'));
+    state.tab = 'all';
+    state._keepView = next;
+    paintViewButtons();
+    load(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  state.view = next;
   state.shown = state.perPage;
   paintViewButtons();
   render();
@@ -1221,7 +1234,7 @@ function refreshHomeMine() {
 
 // ---------- orquestração ----------
 async function load(reset = true) {
-  if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = 'all'; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
+  if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = state._keepView || 'all'; state._keepView = null; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
   state.shown = state.perPage; // primeira leva; "carregar mais" aumenta
   $('#cinemaPanel').classList.toggle('hidden', state.tab !== 'nowplaying');
   $('#assistantPanel').classList.toggle('hidden', state.tab !== 'assistant');
