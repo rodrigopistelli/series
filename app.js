@@ -11,7 +11,7 @@ const TMDB_IMG_SMALL = 'https://image.tmdb.org/t/p/w500';
 const PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750"><rect width="100%" height="100%" fill="#161d33"/><text x="50%" y="50%" fill="#9aa4c7" font-size="28" text-anchor="middle">Sem capa</text></svg>`);
 
-const YTS_MIRRORS = ['https://yts.am/api', 'https://yts.mx/api', 'https://yts.lt/api']; // am primeiro: mx/lt instáveis
+const YTS_MIRRORS = ['https://yts.am/api', 'https://yts.ag/api', 'https://yts.mx/api', 'https://yts.lt/api']; // am/ag ativos; mx/lt instáveis
 
 const state = {
   tab: 'all',
@@ -33,6 +33,7 @@ const state = {
   view: 'all', // all | favs | watched | watching
   userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
   cinemas: [],
+  ytsDown: false, // provedor de filmes inacessível (bloqueio de rede/AdBlock?)
   tvmazeCache: null,      // base (págs 0-1, clássicos p/ top)
   tvmazeRecent: null,     // bloco contíguo mais novo (sem buracos)
   loadToken: 0,           // invalida enriquecimento em 2º plano ao trocar filtro/aba
@@ -220,6 +221,7 @@ function render() {
         'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
   } else {
     statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
+    if (state.ytsDown && state.type !== 'series') statusEl.textContent += ' • filmes indisponíveis: sua rede/AdBlock pode estar bloqueando o provedor';
   }
   for (const it of slice) {
     const card = document.createElement('article');
@@ -599,9 +601,10 @@ async function ytsFetch(params) {
       for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
       const r = await fetch(url);
       const d = await r.json();
-      if (d.status === 'ok') return d.data.movies || [];
+      if (d.status === 'ok') { state.ytsDown = false; return d.data.movies || []; }
     } catch (e) { lastErr = e; }
   }
+  state.ytsDown = true;
   throw lastErr || new Error('YTS indisponível');
 }
 function ytsToItem(m) {
@@ -683,12 +686,17 @@ function formatAddr(t = {}) {
 }
 async function overpassCinemas(lat, lon, radius = 25000) {
   const q = `[out:json][timeout:25];(node["amenity"="cinema"](around:${radius},${lat},${lon});way["amenity"="cinema"](around:${radius},${lat},${lon});relation["amenity"="cinema"](around:${radius},${lat},${lon}););out center 20;`;
+  const attempts = [
+    { url: 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q) },
+    { url: 'https://overpass.kumi.systems/api/interpreter?data=' + encodeURIComponent(q) },
+    { url: 'https://overpass-api.de/api/interpreter', opts: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) } },
+  ];
   let lastErr;
-  for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+  for (const a of attempts) {
     try {
-      const r = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q) });
+      const r = await fetch(a.url, a.opts);
       if (!r.ok) throw new Error('Overpass ' + r.status);
-      return (await r.json()).elements || [];
+      return ((await r.json()).elements || []);
     } catch (e) { lastErr = e; }
   }
   throw lastErr || new Error('Overpass indisponível');
@@ -696,17 +704,22 @@ async function overpassCinemas(lat, lon, radius = 25000) {
 function saveLoc() { try { localStorage.setItem('cineseries_loc', JSON.stringify(state.userLoc)); } catch {} }
 async function reverseCity(lat, lon) {
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=pt-BR&lat=${lat}&lon=${lon}`);
-    const a = (await r.json()).address || {};
-    const city = a.city || a.town || a.village || a.municipality || '';
-    return city && a.state ? `${city} — ${a.state}` : city;
+    const r = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lon}&lang=pt`);
+    const p = (await r.json()).features?.[0]?.properties || {};
+    const city = p.city || p.name || '';
+    return city && p.state ? `${city} — ${p.state}` : city;
   } catch { return ''; }
 }
 async function geocodeCity(q) {
-  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=pt-BR&countrycodes=br&q=${encodeURIComponent(q)}`);
-  const j = await r.json();
-  if (!j.length) throw new Error('not found');
-  return { lat: +j[0].lat, lon: +j[0].lon, label: j[0].display_name.split(',').slice(0, 2).join(',').trim() };
+  const m = q.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (m) return { lat: +m[1], lon: +m[2], label: `${m[1]}, ${m[2]}` };
+  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1&lang=pt`);
+  if (!r.ok) throw new Error('geo ' + r.status);
+  const f = (await r.json()).features?.[0];
+  if (!f) throw new Error('not found');
+  const p = f.properties || {};
+  const city = p.city || p.name || '';
+  return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: [city, p.state].filter(Boolean).join(' — ') || q };
 }
 async function loadCinemas() {
   const box = $('#cinemaList'), st = $('#cinemaStatus');
@@ -857,7 +870,7 @@ function bind() {
     if (!q) return;
     $('#cinemaStatus').textContent = `Localizando ${q}…`;
     try { state.userLoc = await geocodeCity(q); saveLoc(); loadCinemas(); }
-    catch { $('#cinemaStatus').textContent = 'Cidade não encontrada. Tente "Cidade, UF".'; }
+    catch { $('#cinemaStatus').textContent = 'Cidade não encontrada. Tente "Cidade, UF" ou coordenadas "-23.55, -46.63".'; }
   });
   $('#geoBtn').addEventListener('click', () => {
     if (!navigator.geolocation) { $('#cinemaStatus').textContent = 'Geolocalização indisponível: digite sua cidade.'; return; }
