@@ -31,6 +31,8 @@ const state = {
   watched: JSON.parse(localStorage.getItem('cineseries_watched') || '[]'),
   watching: JSON.parse(localStorage.getItem('cineseries_watching') || '[]'),
   view: 'all', // all | favs | watched | watching
+  moodText: '',
+  moodProfile: null,
   userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
   cinemas: [],
   ytsDown: false, // provedor de filmes inacessível (bloqueio de rede/AdBlock?)
@@ -246,7 +248,9 @@ function render() {
     };
     statusEl.textContent = (state.view !== 'all' && hints[state.view])
       ? hints[state.view]
-      : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
+      : state.tab === 'assistant' && !state.moodText.trim()
+        ? 'Descreva seu momento acima e toque em "Sugerir o que assistir".'
+        : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
         'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
   } else {
     statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
@@ -352,6 +356,7 @@ function tmdbToItem(x) {
     overview: x.overview || '',
     genres: (x.genre_ids || []).map(id => TMDB_GENRES[id]).filter(Boolean),
     source: 'TMDB',
+    runtime: null,
     imdb: null,
     imdbRating: null,
     tmdbId: x.id,
@@ -569,6 +574,7 @@ function tvmazeToItem(s) {
     overview: stripHtml(s.summary),
     genres: s.genres || [],
     source: 'TVMaze',
+    runtime: s.runtime || s.averageRuntime || null,
     imdb: s.externals?.imdb || null,
     imdbRating: (s.externals?.imdb && imdbCache[s.externals.imdb]?.r) || null,
     trailer: s.officialSite || s.url,
@@ -636,6 +642,7 @@ function ytsToItem(m) {
     overview: m.synopsis || m.description_full || '',
     genres: m.genres || [],
     source: 'YTS',
+    runtime: m.runtime || null,
     imdb: m.imdb_code || null,
     imdbRating: (m.imdb_code && imdbCache[m.imdb_code]?.r) || null,
     trailer: m.yt_trailer_code ? `https://www.youtube.com/watch?v=${m.yt_trailer_code}` : (m.imdb_code ? `https://www.imdb.com/title/${m.imdb_code}/` : null),
@@ -772,11 +779,92 @@ function renderCinemas() {
   }).join('');
 }
 
+// ---------- Assistente de momento (texto livre → perfil → ranking) ----------
+const LIGHT_GENRES = ['Comedy', 'Animation', 'Family', 'Romance', 'Music'];
+const INTENSE_GENRES = ['Horror', 'Thriller', 'Crime', 'Action', 'War'];
+const COZY_GENRES = ['Drama', 'Romance', 'Mystery', 'Fantasy'];
+function analyzeMood(text) {
+  const t = (text || '').toLowerCase();
+  const has = (...ws) => ws.some(w => t.includes(w));
+  const p = { want: new Set(), avoid: new Set(), light: 0, maxRuntime: null, signals: [] };
+  const gmap = { 'terror': 'Horror', 'comédia': 'Comedy', 'comedia': 'Comedy', 'romance': 'Romance', 'ação': 'Action', 'acao': 'Action', 'aventura': 'Adventure', 'drama': 'Drama', 'ficção': 'Sci-Fi', 'ficcao': 'Sci-Fi', 'suspense': 'Thriller', 'animação': 'Animation', 'animacao': 'Animation', 'crime': 'Crime', 'documentário': 'Documentary', 'documentario': 'Documentary', 'fantasia': 'Fantasy', 'mistério': 'Mystery', 'misterio': 'Mystery', 'musical': 'Music', 'guerra': 'War', 'faroeste': 'Western', 'história': 'History', 'historia': 'History' };
+  for (const [k, g] of Object.entries(gmap)) if (t.includes(k)) { p.want.add(g); p.signals.push(`gênero ${k}`); }
+  if (has('cansad', 'exaust', 'relax', 'tranquil', 'leve', 'sono', 'descansar')) { p.light++; LIGHT_GENRES.forEach(g => p.want.add(g)); p.signals.push('energia baixa → leve'); }
+  if (has('animad', 'energia', 'adrenalina', 'agitad', 'intens', 'eletrizante')) { INTENSE_GENRES.forEach(g => p.want.add(g)); p.signals.push('energia alta → intenso'); }
+  if (has('triste', 'depre', 'chorar', 'pra baixo', 'para baixo', ' mal', 'desanim')) { ['Comedy', 'Romance', 'Animation'].forEach(g => p.want.add(g)); p.avoid.add('Horror'); p.signals.push('astral baixo → para cima'); }
+  if (has('ansios', 'estress', 'preocupad', 'nervos', 'tens')) { p.light++; ['Comedy', 'Animation'].forEach(g => p.want.add(g)); p.avoid.add('Horror'); p.signals.push('tensão → leve'); }
+  if (has('chuv', 'frio', 'nublado', 'cobertor', 'sofá', 'sofa', 'preguiça', 'preguica')) { COZY_GENRES.forEach(g => p.want.add(g)); p.signals.push('clima aconchegante'); }
+  if (has('calor', ' sol', 'sol ', 'praia', 'verão', 'verao')) { ['Adventure', 'Action', 'Comedy'].forEach(g => p.want.add(g)); p.signals.push('calor → aventura'); }
+  if (has('medo', 'assustar', 'coragem')) { ['Thriller', 'Mystery'].forEach(g => p.want.add(g)); p.signals.push('clima de suspense'); }
+  if (has('comendo', 'comer', 'pipoca', 'janta', 'almoç', 'almoc', 'lanche', 'pizza', 'jantar')) { p.maxRuntime = 140; p.light++; ['Comedy', 'Adventure', 'Animation'].forEach(g => p.want.add(g)); p.signals.push('comendo → até ~2h20 e leve'); }
+  if (has('criança', 'crianca', 'filho', 'filha', 'família', 'familia', 'kids')) { ['Animation', 'Family', 'Comedy'].forEach(g => p.want.add(g)); p.signals.push('em família'); }
+  let h = new Date().getHours();
+  if (has('manhã', 'manha', 'café da manhã', 'cafe da manha')) h = 9;
+  else if (has('madrugada')) h = 1;
+  else if (has('tarde')) h = 15;
+  else if (has('noite')) h = 21;
+  if (h >= 0 && h < 6) { p.maxRuntime = Math.min(p.maxRuntime ?? 150, 150); p.light++; p.signals.push('madrugada → nada muito longo'); }
+  else if (h < 12) p.signals.push('período da manhã');
+  else if (h < 18) p.signals.push('período da tarde');
+  else p.signals.push('período da noite');
+  return { ...p, hour: h };
+}
+function scoreItem(it, p) {
+  let s = (it.rating || 0) * 2;
+  const gs = it.genres || [];
+  for (const g of gs) {
+    if (p.want.has(g)) s += 3;
+    if (p.avoid.has(g)) s -= 6;
+  }
+  const wantsIntense = [...p.want].some(g => INTENSE_GENRES.includes(g));
+  if (p.light > 0 && !wantsIntense && gs.some(g => INTENSE_GENRES.includes(g))) s -= 4;
+  if (p.maxRuntime && it.runtime) s += it.runtime <= p.maxRuntime ? 1 : -4;
+  if (it.year && it.year >= new Date().getFullYear() - 3) s += 1;
+  return s;
+}
+async function loadAssistant() {
+  const text = (state.moodText || '').trim();
+  const p = analyzeMood(text);
+  state.moodProfile = p;
+  const box = $('#moodSummary');
+  if (box) {
+    if (!text) box.classList.add('hidden');
+    else {
+      box.classList.remove('hidden');
+      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Ordenei por compatibilidade (gênero + nota + duração).</small>`;
+    }
+  }
+  if (!text) return [];
+  let pool = [];
+  if (state.tmdbKey) {
+    const d = await tmdb('/trending/all/week', { page: 1 });
+    pool = d.results.filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(tmdbToItem);
+  } else {
+    const [base, recent, ytsRaw] = await Promise.all([
+      tvmazeBaseShows().catch(() => []),
+      tvmazeRecentShows().catch(() => []),
+      (async () => {
+        const b = await Promise.all([1, 2].map(pg => ytsFetch({ limit: 50, page: pg, sort_by: 'like_count', order_by: 'desc', with_rt_ratings: false, minimum_rating: 6 }).catch(() => [])));
+        const m = new Map();
+        for (const x of b.flat()) if (x && !m.has(x.id)) m.set(x.id, x);
+        return [...m.values()];
+      })(),
+    ]);
+    const seen = new Map();
+    for (const s of [...base, ...recent]) if (s && !seen.has('tvmaze-' + s.id)) seen.set('tvmaze-' + s.id, tvmazeToItem(s));
+    for (const m of ytsRaw) seen.set('yts-' + m.id, ytsToItem(m));
+    pool = [...seen.values()];
+  }
+  pool = pool.filter(it => state.type === 'all' || it.type === state.type);
+  return pool.map(it => ({ it, s: scoreItem(it, p) })).sort((a, b) => b.s - a.s).slice(0, 24).map(x => x.it);
+}
+
 // ---------- orquestração ----------
 async function load(reset = true) {
   if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = 'all'; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
   state.shown = state.perPage; // primeira leva; "carregar mais" aumenta
   $('#cinemaPanel').classList.toggle('hidden', state.tab !== 'nowplaying');
+  $('#assistantPanel').classList.toggle('hidden', state.tab !== 'assistant');
   if (state.tab === 'nowplaying') {
     if (state.userLoc && !state.cinemas.length) loadCinemas();
     else renderCinemas();
@@ -784,7 +872,9 @@ async function load(reset = true) {
   statusEl.textContent = 'Carregando…';
   try {
     let items = [];
-    if (state.tmdbKey) {
+    if (state.tab === 'assistant') {
+      items = await loadAssistant();
+    } else if (state.tmdbKey) {
       items = await loadTMDB();
     } else {
       const wantMovies = state.type === 'all' || state.type === 'movie';
@@ -880,6 +970,19 @@ function bind() {
   $('#favBtn').addEventListener('click', () => setView('favs'));
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
+  $('#chipRow').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const ta = $('#moodInput');
+    ta.value = (ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '') + b.textContent.trim() + ' ';
+    ta.focus();
+  });
+  $('#suggestBtn').addEventListener('click', () => {
+    state.moodText = $('#moodInput').value;
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
+    document.querySelector('[data-tab="assistant"]').classList.add('active');
+    state.tab = 'assistant';
+    load(true);
+  });
   if (state.userLoc?.label && state.userLoc.label !== 'Sua localização') $('#cityInput').value = state.userLoc.label;
   $('#locForm').addEventListener('submit', async (e) => {
     e.preventDefault();
