@@ -329,6 +329,9 @@ function render() {
         : state.tab === 'assistant' && state.assistantEmpty
         ? state.assistantEmpty
         : `Nenhum título${active.length ? ` para ${active.join(' • ')}` : ''}. ` +
+        (state.tab === 'search' && /[à-úâêôãõç]/i.test(state.query || '')
+          ? 'Título em português pode não existir no índice inglês — tente o nome original (ex. "Terra da Máfia" → "MobLand"). '
+          : '') +
         'Dica: deixe "até" em branco p/ incluir o ano atual, confira se "de" ≤ "até" e tente aba Lançamentos p/ 2025.';
   } else {
     statusEl.textContent = list.length === 1 ? '1 título encontrado' : `${list.length} títulos encontrados`;
@@ -1219,8 +1222,21 @@ async function load(reset = true) {
       if (state.tab === 'search' && state.query) {
         // Títulos em PT via Wikidata + quem contém a palavra primeiro (sem acento)
         const pt = await searchPTitles(state.query, state.type).catch(() => []);
+        // Varredura local nos caches (sem rede): substring no título original
+        const nq0 = normStr(state.query);
+        const scan = [];
+        {
+          const src = [...(state.tvmazeCache || []), ...(state.tvmazeRecent || [])];
+          const done = new Set();
+          for (const s of src) {
+            if (!s || done.has(s.id)) continue;
+            done.add(s.id);
+            if (s.name && normStr(s.name).includes(nq0)) scan.push(tvmazeToItem(s));
+            if (scan.length >= 30) break;
+          }
+        }
         const seen = new Map();
-        for (const it of [...items, ...pt]) { const k = it.imdb ? 'tt-' + it.imdb : it.key; if (!seen.has(k)) seen.set(k, it); }
+        for (const it of [...items, ...pt, ...scan]) { const k = it.imdb ? 'tt-' + it.imdb : it.key; if (!seen.has(k)) seen.set(k, it); }
         items = [...seen.values()];
         const nq = normStr(state.query);
         const has = (it) => (normStr(it.title).includes(nq) || (it.ptTitle && normStr(it.ptTitle).includes(nq))) ? 1 : 0;
