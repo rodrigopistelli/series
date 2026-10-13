@@ -34,6 +34,8 @@ const state = {
   moodText: '',
   moodProfile: null,
   assistantEmpty: '',
+  assistantMode: 'suggest', // suggest | review
+  reviewList: [],
   userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
   cinemas: [],
   ytsDown: false, // provedor de filmes inacessível (bloqueio de rede/AdBlock?)
@@ -920,6 +922,73 @@ async function loadAssistant() {
   return pool;
 }
 
+// ---------- Assistente: avaliar um título específico ----------
+function showReviewMode(on) {
+  $('#grid').classList.toggle('hidden', on);
+  document.querySelector('.pager').classList.toggle('hidden', on);
+  $('#status').classList.toggle('hidden', on);
+  $('#reviewBox').classList.toggle('hidden', !on);
+}
+async function reviewTitle() {
+  const q = ($('#moodInput').value || '').trim();
+  const box = $('#reviewBox');
+  showReviewMode(true);
+  if (!q) { box.innerHTML = '<p class="hint">Digite o nome do filme ou série acima.</p>'; return; }
+  box.innerHTML = `<p class="hint">Buscando avaliação de "${q.replace(/</g, '&lt;')}"…</p>`;
+  const [tv, yts, cm, cs] = await Promise.all([
+    fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(q)}`).then(r => r.json()).catch(() => []),
+    ytsFetch({ limit: 10, query_term: q, sort_by: 'date_added', order_by: 'desc' }).catch(() => []),
+    fetch(`https://v3-cinemeta.strem.io/catalog/movie/top/search=${encodeURIComponent(q)}.json`).then(r => r.json()).then(j => j.metas || []).catch(() => []),
+    fetch(`https://v3-cinemeta.strem.io/catalog/series/top/search=${encodeURIComponent(q)}.json`).then(r => r.json()).then(j => j.metas || []).catch(() => []),
+  ]);
+  const cands = [
+    ...tv.slice(0, 5).map(x => tvmazeToItem(x.show)),
+    ...yts.slice(0, 5).map(ytsToItem),
+    ...cm.slice(0, 5).map(m => cinemetaToItem(m, 'movie')),
+    ...cs.slice(0, 5).map(m => cinemetaToItem(m, 'series')),
+  ].filter(it => it && it.title);
+  const seen = new Map();
+  for (const it of cands) { const k = it.imdb ? 'tt-' + it.imdb : it.key; if (!seen.has(k)) seen.set(k, it); }
+  const list = [...seen.values()];
+  if (!list.length) { box.innerHTML = `<p>Nada encontrado para "${q.replace(/</g, '&lt;')}". Confira a grafia.</p>`; return; }
+  const ql = q.toLowerCase();
+  const starts = (t) => t.toLowerCase().startsWith(ql) ? 1 : 0;
+  list.sort((a, b) => ((b.title.toLowerCase() === ql) - (a.title.toLowerCase() === ql)) || (starts(b.title) - starts(a.title)) || ((b.imdbRating || b.rating || 0) - (a.imdbRating || a.rating || 0)));
+  state.reviewList = list;
+  paintReview(0);
+}
+function paintReview(i) {
+  const it = state.reviewList[i];
+  if (!it) return;
+  const box = $('#reviewBox');
+  const others = state.reviewList.map((x, j) => j === i ? '' : `<button data-ri="${j}" class="ghost">${x.title}${x.year ? ' (' + x.year + ')' : ''}</button>`).join('');
+  box.innerHTML = `
+    <div class="review-card">
+      <img src="${it.cover}" onerror="this.src='${PLACEHOLDER}'" alt="Capa de ${it.title}" />
+      <div>
+        <h2>${it.title} ${it.year ? '(' + it.year + ')' : ''}</h2>
+        <div class="sub" id="reviewSub">${ratingLabel(it)} • ${it.type === 'movie' ? 'Filme' : 'Série'}</div>
+        <div class="chips">${(it.genres || []).map(g => `<span>${g}</span>`).join('')}</div>
+        <p>${it.overview || 'Sinopse não disponível.'}</p>
+        <div class="row">
+          ${it.imdb ? `<a href="https://www.imdb.com/title/${it.imdb}/" target="_blank" rel="noopener"><button class="ghost">IMDb</button></a>` : ''}
+          ${it.trailer ? `<a href="${it.trailer}" target="_blank" rel="noopener"><button class="ghost">▶ Trailer</button></a>` : ''}
+        </div>
+      </div>
+    </div>
+    ${others ? `<div class="alt-row"><small>Outras opções:</small> ${others}</div>` : ''}`;
+  box.querySelectorAll('[data-ri]').forEach(b => b.addEventListener('click', () => paintReview(+b.dataset.ri)));
+  if (it.imdb && !it.imdbRating) {
+    fetchImdbRating(it.imdb, it.type).then(v => {
+      if (v) {
+        it.imdbRating = v; paintImdbBadge(it.key, v);
+        const s = $('#reviewSub');
+        if (s) s.textContent = `${ratingLabel(it)} • ${it.type === 'movie' ? 'Filme' : 'Série'}`;
+      }
+    });
+  }
+}
+
 // ---------- orquestração ----------
 async function load(reset = true) {
   if (reset) { state.page = 1; state.items = []; state.shown = 0; state.view = 'all'; paintViewButtons(); state.loadToken = (state.loadToken || 0) + 1; }
@@ -982,6 +1051,9 @@ function bind() {
       state.moodText = '';
       const ta = $('#moodInput'); if (ta) ta.value = '';
       $('#moodSummary').classList.add('hidden');
+      $('#reviewBox').classList.add('hidden');
+      $('#reviewBox').innerHTML = '';
+      showReviewMode(false);
     }
     load(true);
   }));
@@ -1037,6 +1109,21 @@ function bind() {
   $('#favBtn').addEventListener('click', () => setView('favs'));
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
+  $('#modeSeg').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    state.assistantMode = b.dataset.mode;
+    const review = state.assistantMode === 'review';
+    $('#moodInput').value = '';
+    $('#moodInput').placeholder = review ? 'Digite o nome do filme ou série… ex: Deadpool' : 'Ex: filme de comédia para comer pizza sábado à noite…';
+    $('#suggestBtn').textContent = review ? 'buscar avaliação' : 'buscar indicações';
+    $('#chipRow').style.display = review ? 'none' : '';
+    $('#moodSummary').classList.add('hidden');
+    $('#reviewBox').classList.add('hidden');
+    $('#reviewBox').innerHTML = '';
+    showReviewMode(false);
+  });
   $('#chipRow').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     const ta = $('#moodInput');
@@ -1045,6 +1132,8 @@ function bind() {
     runAssistant();
   });
   function runAssistant() {
+    if (state.assistantMode === 'review') { reviewTitle(); return; }
+    showReviewMode(false);
     state.moodText = $('#moodInput').value;
     document.querySelectorAll('.tabs button').forEach(x => x.classList.remove('active'));
     document.querySelector('[data-tab="assistant"]').classList.add('active');

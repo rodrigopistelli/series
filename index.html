@@ -88,6 +88,10 @@
     <div>
       <strong>✨ O que quer assistir hoje?</strong>
     </div>
+    <div class="seg" id="modeSeg">
+      <button data-mode="suggest" class="active">✨ Indicações</button>
+      <button data-mode="review">📝 Avaliar título</button>
+    </div>
     <textarea id="moodInput" rows="3" placeholder="Ex: filme de comédia para comer pizza sábado à noite…"></textarea>
     <div class="chip-row" id="chipRow">
       <button type="button">😮‍💨 cansado</button>
@@ -107,6 +111,7 @@
 </section>
 
 <main>
+  <div id="reviewBox" class="review-box hidden"></div>
   <div id="status" class="status">Carregando…</div>
   <div id="grid" class="grid"></div>
   <div class="pager">
