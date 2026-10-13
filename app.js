@@ -13,6 +13,8 @@ const PLACEHOLDER = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
 
 const YTS_MIRRORS = ['https://movies-api.accel.li/api', 'https://yts.am/api', 'https://yts.ag/api', 'https://yts.mx/api', 'https://yts.lt/api']; // endpoint oficial novo primeiro
 
+function storeGet(k) { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } }
+function storeGetObj(k) { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; } }
 const state = {
   tab: 'all',
   type: 'all',
@@ -27,17 +29,17 @@ const state = {
   perPage: 24,
   shown: 0,
   tmdbKey: localStorage.getItem('tmdb_key') || '',
-  favorites: JSON.parse(localStorage.getItem('cineseries_favs') || '[]'),
-  watched: JSON.parse(localStorage.getItem('cineseries_watched') || '[]'),
-  watching: JSON.parse(localStorage.getItem('cineseries_watching') || '[]'),
-  watchlist: JSON.parse(localStorage.getItem('cineseries_watchlist') || '[]'),
+  favorites: storeGet('cineseries_favs'),
+  watched: storeGet('cineseries_watched'),
+  watching: storeGet('cineseries_watching'),
+  watchlist: storeGet('cineseries_watchlist'),
   view: 'all', // all | favs | watched | watching | watchlist
   moodText: '',
   moodProfile: null,
   assistantEmpty: '',
   assistantMode: 'suggest', // suggest | review
   reviewList: [],
-  userLoc: JSON.parse(localStorage.getItem('cineseries_loc') || 'null'), // {lat, lon, label}
+  userLoc: storeGetObj('cineseries_loc'), // {lat, lon, label}
   cinemas: [],
   ytsDown: false, // provedor de filmes inacessível (bloqueio de rede/AdBlock?)
   tvmazeCache: null,      // base (págs 0-1, clássicos p/ top)
@@ -135,7 +137,8 @@ function setupFilters() {
 function stripHtml(h = '') { const d = document.createElement('div'); d.innerHTML = h; return d.textContent.trim(); }
 function yearOf(item) { return item.year || null; }
 function applyClientFilters(items) {
-  if (state.tab === 'assistant') return items; // assistente: frase já filtrou e ordenou; barra pausada
+  // Assistente e listas pessoais (favs/vistos/depois): sem interferência da barra/acervo.
+  if (state.tab === 'assistant' || state.view !== 'all') return items;
   // normaliza ano: se "de" > "até", inverte automaticamente
   let lo = state.yearMin ? +state.yearMin : null;
   let hi = state.yearMax ? +state.yearMax : null;
@@ -157,10 +160,11 @@ function applyClientFilters(items) {
   return out;
 }
 
-function saveFavs() { localStorage.setItem('cineseries_favs', JSON.stringify(state.favorites)); updateCounts(); }
-function saveWatched() { localStorage.setItem('cineseries_watched', JSON.stringify(state.watched)); updateCounts(); }
-function saveWatching() { localStorage.setItem('cineseries_watching', JSON.stringify(state.watching)); updateCounts(); }
-function saveWatchlist() { localStorage.setItem('cineseries_watchlist', JSON.stringify(state.watchlist)); updateCounts(); }
+function storeSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.error('storage', k, e); } updateCounts(); }
+function saveFavs() { storeSet('cineseries_favs', state.favorites); }
+function saveWatched() { storeSet('cineseries_watched', state.watched); }
+function saveWatching() { storeSet('cineseries_watching', state.watching); }
+function saveWatchlist() { storeSet('cineseries_watchlist', state.watchlist); }
 function updateCounts() {
   $('#favCount').textContent = state.favorites.length;
   $('#watchedCount').textContent = state.watched.length;
