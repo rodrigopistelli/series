@@ -816,19 +816,6 @@ function analyzeMood(text) {
   else p.signals.push('período da noite');
   return { ...p, hour: h };
 }
-function scoreItem(it, p) {
-  let s = (it.rating || 0) * 2;
-  const gs = it.genres || [];
-  for (const g of gs) {
-    if (p.want.has(g)) s += 5;
-    if (p.avoid.has(g)) s -= 6;
-  }
-  const wantsIntense = [...p.want].some(g => INTENSE_GENRES.includes(g));
-  if (p.light > 0 && !wantsIntense && gs.some(g => INTENSE_GENRES.includes(g))) s -= 4;
-  if (p.maxRuntime && it.runtime) s += it.runtime <= p.maxRuntime ? 1 : -4;
-  if (it.year && it.year >= new Date().getFullYear() - 3) s += 1;
-  return s;
-}
 async function loadAssistant() {
   const text = (state.moodText || '').trim();
   const p = analyzeMood(text);
@@ -839,7 +826,7 @@ async function loadAssistant() {
     if (!text) box.classList.add('hidden');
     else {
       box.classList.remove('hidden');
-      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Ordenei por compatibilidade (gênero + nota + duração).</small>`;
+      box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}<br><small>Todos os compatíveis, dos mais bem avaliados e novos primeiro.</small>`;
     }
   }
   if (!text) return [];
@@ -870,19 +857,17 @@ async function loadAssistant() {
   pool = pool.filter(it => state.type === 'all' || it.type === state.type);
   const effType = p.media && p.media !== 'all' ? p.media : state.type;
   pool = pool.filter(it => effType === 'all' || it.type === effType);
-  if (p.explicit.size) {
-    // Gênero pedido vira filtro rígido; se zerar mas houver pool, aproxima avisando no resumo.
-    const strict = pool.filter(it => (it.genres || []).some(g => p.explicit.has(g)));
-    if (strict.length) pool = strict;
-    else if (pool.length) {
-      const box2 = $('#moodSummary');
-      if (box2) box2.innerHTML += `<br><small>Sem ${[...p.explicit].join('/')} exato por aqui — aproximei pelo resto dos seus sinais.</small>`;
-    } else {
-      const tipo = effType === 'movie' ? 'filmes' : effType === 'series' ? 'séries' : 'títulos';
-      state.assistantEmpty = `Nada de ${[...p.explicit].join('/')} entre ${tipo} por aqui — tente outro gênero ou abra a aba Todos.`;
-    }
+  // Fidelidade total: gênero pedido (ou inferido da frase) vira filtro rígido;
+  // gêneros indesejados e longos demais saem. Sem limite: a paginação exibe em levas.
+  const must = p.explicit.size ? p.explicit : p.want;
+  if (must.size) pool = pool.filter(it => (it.genres || []).some(g => must.has(g)));
+  if (p.avoid.size) pool = pool.filter(it => !(it.genres || []).some(g => p.avoid.has(g)));
+  if (p.maxRuntime) pool = pool.filter(it => !it.runtime || it.runtime <= p.maxRuntime);
+  pool.sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.year || 0) - (a.year || 0));
+  if (!pool.length) {
+    state.assistantEmpty = `Nada compatível com: ${p.signals.length ? p.signals.join(' • ') : 'sua descrição'} — tente outra frase ou abra a aba Todos.`;
   }
-  return pool.map(it => ({ it, s: scoreItem(it, p) })).sort((a, b) => b.s - a.s).slice(0, 24).map(x => x.it);
+  return pool;
 }
 
 // ---------- orquestração ----------
