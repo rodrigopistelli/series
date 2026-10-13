@@ -913,10 +913,9 @@ async function loadAssistant() {
     const conf = p.explicit.size && r >= 7.5 ? 'alta' : r >= 7 ? 'boa' : r >= 5.5 ? 'razoável' : 'incerta';
     const extra = conf === 'alta' || conf === 'boa' ? '' : ' — me conte mais (gênero, época) que eu afino.';
     box.classList.remove('hidden');
-    box.innerHTML = `<strong>Entendi seu momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}`
+    box.innerHTML = `<strong>Seu Momento:</strong> ${p.signals.length ? p.signals.join(' • ') : 'sem sinais claros — misturei os bem avaliados'}`
       + `<br><br>Minha aposta é ${fmt(top[0])}: combina com ${p.signals.slice(0, 3).join(', ') || 'seu momento'}. <b>Chance de gostar: ${conf}</b>${extra}`
-      + (top.length > 1 ? `<br>Também entram na lista: ${top.slice(1).map(fmt).join(' • ')}.` : '')
-      + `<br><small>Todos os compatíveis, por nota e novidade. Filtros da barra pausados aqui — vale o que você escreveu.</small>`;
+      + (top.length > 1 ? `<br>Também entram na lista: ${top.slice(1).map(fmt).join(' • ')}.` : '');
   }
   return pool;
 }

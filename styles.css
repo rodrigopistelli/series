@@ -44,7 +44,7 @@ button {
 }
 .search button, .primary { background: var(--accent); color: #fff; }
 .search button:hover, .primary:hover { filter: brightness(1.1); }
-.btn-cozy { background: linear-gradient(135deg, #f6b73c, #e2703a); color: #2a1503; }
+.btn-cozy { background: linear-gradient(135deg, #f6b73c, #e2703a); color: #2a1503; text-transform: uppercase; font-size: 13px; letter-spacing: .5px; }
 .btn-cozy:hover { filter: brightness(1.07); }
 .filters-off { opacity: .45; pointer-events: none; }
 .ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
