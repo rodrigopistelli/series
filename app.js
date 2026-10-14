@@ -1386,6 +1386,10 @@ function bind() {
   $('#watchedBtn').addEventListener('click', () => setView('watched'));
   $('#watchingBtn').addEventListener('click', () => setView('watching'));
   $('#laterBtn').addEventListener('click', () => setView('watchlist'));
+  $('#assistantFab').addEventListener('click', () => {
+    const t = document.querySelector('[data-tab="assistant"]');
+    if (t) t.click();
+  });
   $('#modeSeg').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('#modeSeg button').forEach(x => x.classList.remove('active'));
